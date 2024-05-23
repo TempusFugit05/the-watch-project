@@ -12,7 +12,7 @@
 
 #include "hagl_hal.h"
 #include "hagl.h"
-#include "font9x18B-ISO8859-1.h"
+#include "fonts/font9x18B-ISO8859-1.h"
 #include "font6x9.h"
 
 #include "ds3231.h"
@@ -45,7 +45,7 @@ gptimer_handle_t button_timer; // Timer for button software debounce
 
 ds3231_handle_t ds3231_dev_handle; // Rtc
 
-tm rtc_time {0,0,0,0,0,0,0,0}; // Time from the rtc module
+tm rtc_time; // Time from the rtc module
 
 typedef enum : uint8_t{
     FOO,
@@ -189,7 +189,7 @@ void write_time(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
 
-    hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder
+    hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
     char time_str [32]; // String buffer
     wchar_t formatted_str [32]; // String buffer compatable with the display library
     while (1)
@@ -337,7 +337,6 @@ extern "C" void app_main(void)
     
     // Rtc setup
     ds3231_dev_handle = ds3231_init(&i2c_master_handle, DS3231_TIME_FORMAT_24_HOURS); // rtc setup
-    ds3231_set_datetime(&ds3231_dev_handle, &rtc_time);
 
     // Set Rtc time to compilation time
     if (SET_COMPILE_TIME_FOR_RTC)

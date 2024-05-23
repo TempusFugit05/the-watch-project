@@ -234,6 +234,8 @@ int str_to_month(const char* month)
 
 void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle)
 {
+    /*Set the time during the compilation 
+    (Useful for testing or setting the initial time for the module)*/
     tm time_struct;
     char date_buff[] = __DATE__; // Date during time (string)
     char month[16]; // Temporary buffer to store month string
