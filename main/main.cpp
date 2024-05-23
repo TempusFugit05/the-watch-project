@@ -13,6 +13,7 @@
 #include "hagl_hal.h"
 #include "hagl.h"
 #include "fonts/font9x18B-ISO8859-1.h"
+#include "fonts/font10x20-KOI8-R.h"
 #include "font6x9.h"
 
 #include "ds3231.h"
@@ -34,7 +35,7 @@
 #define BUTTON_DEBOUNCE_COOLDOWN    10000
 #define BUTTON_LONG_PRESS_COOLDOWN  500000
 
-#define SET_COMPILE_TIME_FOR_RTC    false
+// #define SET_COMPILE_TIME_FOR_RTC    false
 
 #define SCEEN_SIZE_X 240
 #define SCEEN_SIZE_Y 320
@@ -185,6 +186,11 @@ void input_events_handler(void* arg)
     }
 }
 
+void get_time()
+{
+
+}
+
 void write_time(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
@@ -198,12 +204,12 @@ void write_time(void* arg)
         snprintf(time_str, 64, "%02i:%02i:%02i", 
         rtc_time.tm_hour, rtc_time.tm_min, rtc_time.tm_sec);
         mbstowcs(formatted_str, time_str, 32);
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, (DISPLAY_HEIGHT/2 - strlen(time_str)*9), color, font9x18B_ISO8859_1); // Display string
+        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, (DISPLAY_HEIGHT/2 - strlen(time_str)*9), color, font10x20_KOI8_R); // Display string
         
         snprintf(time_str, 64, "%02i,%02i,%04i", 
         rtc_time.tm_mday, rtc_time.tm_mon, rtc_time.tm_year);
         mbstowcs(formatted_str, time_str, 32);
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, (DISPLAY_HEIGHT/2 - strlen(time_str)*9) + 40, color, font9x18B_ISO8859_1); // Display string
+        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, (DISPLAY_HEIGHT/2 - strlen(time_str)*9) + 40, color, font10x20_KOI8_R); // Display string
 
         vTaskDelay(task_delay_ms); // Delay for 1 second
     }
@@ -324,6 +330,21 @@ i2c_master_bus_handle_t setup_i2c_master()
 
 extern "C" void app_main(void)
 {
+    // i2c setup
+    i2c_master_bus_handle_t i2c_master_handle = setup_i2c_master();
+    
+    // Rtc setup
+    ds3231_dev_handle = ds3231_init(&i2c_master_handle, DS3231_TIME_FORMAT_24_HOURS); // rtc setup
+
+    // Set Rtc time to compilation time
+    #ifdef SET_COMPILE_TIME_FOR_RTC
+        ds3231_set_datetime_at_compile(&ds3231_dev_handle);
+    #endif
+
+    // Display setup
+    display = *hagl_init();
+    hagl_clear(&display);
+    
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isr(); // Set up input interrupts
@@ -332,22 +353,6 @@ extern "C" void app_main(void)
     TaskHandle_t input_events_handler_task;
     xTaskCreatePinnedToCore(input_events_handler, "write_time_task", 4096, NULL, 4, &input_events_handler_task, 0);
 
-    // i2c setup
-    i2c_master_bus_handle_t i2c_master_handle = setup_i2c_master();
-    
-    // Rtc setup
-    ds3231_dev_handle = ds3231_init(&i2c_master_handle, DS3231_TIME_FORMAT_24_HOURS); // rtc setup
-
-    // Set Rtc time to compilation time
-    if (SET_COMPILE_TIME_FOR_RTC)
-    {
-        ds3231_set_datetime_at_compile(&ds3231_dev_handle);
-    }
-
-    // Display setup
-    display = *hagl_init();
-    hagl_clear(&display);
-    
     // Time-keeping task
     TaskHandle_t write_time_task;
     xTaskCreatePinnedToCore(write_time, "write_time_task", 4096, NULL, 4, &write_time_task, 0);
