@@ -183,7 +183,7 @@ void input_events_handler(void* arg)
                     break;
             }
         ESP_LOGI("input_event", "%s", event_id);
-        ESP_LOGI("task_size", "%i", uxTaskGetStackHighWaterMark(NULL));
+        // ESP_LOGI("task_size", "%i", uxTaskGetStackHighWaterMark(NULL));
         }
     }
 }
@@ -212,22 +212,21 @@ void manual_time_count()
 void get_time()
 {
     // Gets the time from the rtc module, if rtc fails, starts manual time counting
+    // BUG: When disconnecting the ds3231 from power, the program crashes...
+    // (Possibly a hardware problem?)
+    // Follow up: Turns out this only happens when disconnecting the scl or power pins...
+
     static char TAG[] = "get_time";
     static bool manual_time_keeping = false;
 
-    // BUG: When disconnecting the ds3231 from power, the program crashes...
-    // (Possibly a hardware problem?)
-    
-    if(i2c_master_probe(i2c_master_handle, DS3231_I2C_ADDRESS, 10) == ESP_OK)
+    if(i2c_master_probe(i2c_master_handle, DS3231_I2C_ADDRESS, 100) == ESP_OK)
     {
         if (manual_time_keeping)
         {
-            ESP_LOGI(TAG, "rtc recconnected! Reading from rtc...");
             manual_time_keeping = false;
+            ESP_LOGI(TAG, "rtc recconnected! Reading from rtc...");
         }
-
         ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
-
     }// Get time from the rtc if it is connected to the esp
     
     else

@@ -20,7 +20,7 @@ DONE!
 
 2.  Add century functionality as described in the docs
     Check that everything works as expected
-    Create new type for specific error codes?
+    Create new type for specific error codes? - DONE! (Using esp specific error codes)
 
 3.  Add alarm functionality (optional(not very useful IMO))
 */
@@ -55,7 +55,7 @@ int ds3231_config_hour_format(const ds3231_handle_t ds3231_handle, hour_format_t
     uint8_t time_buffer[1]; // Buffer to store the recieved time data
     uint8_t register_num_time_buffer[1] = {HOURS_REGISTER_ADDRESS};
 
-    if (i2c_master_transmit_receive(dev_handle, register_num_time_buffer, 1, time_buffer, 1, 50) == ESP_OK)
+    if (i2c_master_transmit_receive(dev_handle, register_num_time_buffer, 1, time_buffer, 1, -1) == ESP_OK)
     {// Get hour data
     
         // The sixth bit in the register toggles between the 12h and 24h formats
@@ -71,7 +71,7 @@ int ds3231_config_hour_format(const ds3231_handle_t ds3231_handle, hour_format_t
 
         uint8_t transmition_buffer[2] = {*register_num_time_buffer, *time_buffer}; // Rewrite the hour data to includ desired format
         
-        if (i2c_master_transmit(dev_handle, transmition_buffer, 2, 50) == ESP_OK)
+        if (i2c_master_transmit(dev_handle, transmition_buffer, 2, -1) == ESP_OK)
         {
             return ESP_OK;
         }
@@ -196,7 +196,7 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, tm *time_struct)
     {
         register_address[0] = i; // The ds3231 time registers are ordered by ascending values (starting from 0 for seconds)
         
-        if (i2c_master_transmit_receive(ds3231_handle->dev_handle, register_address, 1, buffer, 1, 50) == ESP_OK) // Get relevant register info
+        if (i2c_master_transmit_receive(ds3231_handle->dev_handle, register_address, 1, buffer, 1, -1) == ESP_OK) // Get relevant register info
         {
             *time_addresses[i] = (int)bcd_to_decimal(*buffer); // The data is stored in a bcd so it needs to be converted to decimal 
         }
