@@ -35,7 +35,7 @@
 #define BUTTON_DEBOUNCE_COOLDOWN    10000
 #define BUTTON_LONG_PRESS_COOLDOWN  500000
 
-// #define SET_COMPILE_TIME_FOR_RTC    false
+// #define SET_COMPILE_TIME_FOR_RTC
 
 #define SCEEN_SIZE_X 240
 #define SCEEN_SIZE_Y 320
@@ -45,6 +45,8 @@ hagl_backend_t display; // Main display
 gptimer_handle_t button_timer; // Timer for button software debounce
 
 ds3231_handle_t ds3231_dev_handle; // Rtc
+
+i2c_master_bus_handle_t i2c_master_handle;
 
 tm rtc_time; // Time from the rtc module
 
@@ -186,21 +188,70 @@ void input_events_handler(void* arg)
     }
 }
 
+void manual_time_count()
+{
+    // This function is a rudamentary way to keep track of the time if the rtc fails
+
+    if((rtc_time.tm_sec += 1) > 59) // Add second
+    {
+        rtc_time.tm_sec = 0;
+
+        if ((rtc_time.tm_min += 1) > 59) // Add minute
+        {
+            rtc_time.tm_min = 0;
+
+            if ((rtc_time.tm_hour += 1) > 24) // Add hour (only 24 h format supported)
+            {
+                rtc_time.tm_hour = 0;
+                rtc_time.tm_mday += 1; // Add day
+            }
+        }
+    }
+}
+
 void get_time()
 {
+    // Gets the time from the rtc module, if rtc fails, starts manual time counting
+    static char TAG[] = "get_time";
+    static bool manual_time_keeping = false;
 
+    // BUG: When disconnecting the ds3231 from power, the program crashes...
+    // (Possibly a hardware problem?)
+    
+    if(i2c_master_probe(i2c_master_handle, DS3231_I2C_ADDRESS, 10) == ESP_OK)
+    {
+        if (manual_time_keeping)
+        {
+            ESP_LOGI(TAG, "rtc recconnected! Reading from rtc...");
+            manual_time_keeping = false;
+        }
+
+        ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
+
+    }// Get time from the rtc if it is connected to the esp
+    
+    else
+    {
+        if (!manual_time_keeping)
+        {
+            ESP_LOGE(TAG, "Couldn't connect to the rtc! Starting manual time-keeping...");
+            manual_time_keeping = true;
+        } // Runs once when rtc is unreachable to prevent unecessary console spam
+
+        manual_time_count();
+    } // Manually count time once rtc is unreachable
 }
 
 void write_time(void* arg)
 {
-    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
+    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS; // 
 
     hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
     char time_str [32]; // String buffer
     wchar_t formatted_str [32]; // String buffer compatable with the display library
     while (1)
     {
-        ds3231_get_datetime(&ds3231_dev_handle, &rtc_time); // Get time
+        get_time();
         snprintf(time_str, 64, "%02i:%02i:%02i", 
         rtc_time.tm_hour, rtc_time.tm_min, rtc_time.tm_sec);
         mbstowcs(formatted_str, time_str, 32);
@@ -215,6 +266,7 @@ void write_time(void* arg)
     }
     ESP_LOGI("task_size", "%i", uxTaskGetStackHighWaterMark(NULL));
 }
+
 gptimer_handle_t setup_gptimer()
 {
     /*Timer interrupt setup (for button)*/
@@ -323,7 +375,6 @@ i2c_master_bus_handle_t setup_i2c_master()
         .intr_priority = 0,
     };
     i2c_master_conf.flags.enable_internal_pullup = true;
-    i2c_master_bus_handle_t i2c_master_handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_master_conf, &i2c_master_handle));
     return i2c_master_handle;
 }

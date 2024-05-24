@@ -1,3 +1,6 @@
+#ifndef DS3231_H
+#define DS3231_H
+
 #include "driver/i2c_master.h"
 #include "string.h"
 #include <ctime>
@@ -43,29 +46,48 @@ uint8_t inline decimal_to_bcd(uint8_t decimal_num)
     return (decimal_num%10)+((decimal_num/10)<<4); // Convert an int in decimal format to bcd
 }
 
-void ds3231_config_hour_format(const ds3231_handle_t ds3231_handle, hour_format_t format)
+int ds3231_config_hour_format(const ds3231_handle_t ds3231_handle, hour_format_t format)
 {
     /*Toggle between 12h format and 24h format*/
-
+    char TAG[] = "ds3231";
     i2c_master_dev_handle_t dev_handle = ds3231_handle.dev_handle;
 
     uint8_t time_buffer[1]; // Buffer to store the recieved time data
     uint8_t register_num_time_buffer[1] = {HOURS_REGISTER_ADDRESS};
-    i2c_master_transmit_receive(dev_handle, register_num_time_buffer, 1, time_buffer, 1, -1); // Get hour data
 
-    // The sixth bit in the register toggles between the 12h and 24h formats
-    // if bit == 1 -> 12h format
-    if(format == DS3231_TIME_FORMAT_12_HOURS)
-    {
-        *time_buffer = *time_buffer | 0b00100000; // Set sixth bit to 1
+    if (i2c_master_transmit_receive(dev_handle, register_num_time_buffer, 1, time_buffer, 1, 50) == ESP_OK)
+    {// Get hour data
+    
+        // The sixth bit in the register toggles between the 12h and 24h formats
+        // if bit == 1 -> 12h format
+        if(format == DS3231_TIME_FORMAT_12_HOURS)
+        {
+            *time_buffer = *time_buffer | 0b00100000; // Set sixth bit to 1
+        }
+        else
+        {
+            *time_buffer = ~((~*time_buffer) | 0b00100000); // Set sixth bit to 0
+        }
+
+        uint8_t transmition_buffer[2] = {*register_num_time_buffer, *time_buffer}; // Rewrite the hour data to includ desired format
+        
+        if (i2c_master_transmit(dev_handle, transmition_buffer, 2, 50) == ESP_OK)
+        {
+            return ESP_OK;
+        }
+
+        else
+        {
+            goto format_error; // Throw error if rtc is unreachable
+        }
     }
+
     else
     {
-        *time_buffer = ~((~*time_buffer) | 0b00100000); // Set sixth bit to 0
+format_error:
+        ESP_LOGE(TAG, "Could not set hour format!");
+        return ESP_ERR_TIMEOUT; // Throw error if rtc is unreachable
     }
-
-    uint8_t transmition_buffer[2] = {*register_num_time_buffer, *time_buffer}; // Rewrite the hour data to includ desired format
-    i2c_master_transmit(dev_handle, transmition_buffer, 2, -1);
 }
 
 ds3231_handle_t ds3231_init(i2c_master_bus_handle_t *bus_handle, hour_format_t time_format)
@@ -98,43 +120,43 @@ int validate_time(ds3231_handle_t *ds3231_handle, tm *time_struct)
     /*Function to check that all the time values are within the expected range*/
     char TAG[] = "ds3231";
     
-    if (time_struct->tm_sec > 59 or time_struct->tm_sec < 0)
+    if (time_struct->tm_sec > 59 || time_struct->tm_sec < 0)
     {
         ESP_LOGE(TAG, "Invalid seconds value. Expected range: 0<=t<=59, got value: %i instead", time_struct->tm_sec);
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    else if (time_struct->tm_min > 59 or time_struct->tm_min < 0)
+    else if (time_struct->tm_min > 59 || time_struct->tm_min < 0)
     {
         ESP_LOGE(TAG, "Invalid minutes value. Expected range: 0<=t<=59, got value: %i instead", time_struct->tm_min);
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    else if ((time_struct->tm_hour > 24 or time_struct->tm_hour < 0) && ds3231_handle->hour_format == DS3231_TIME_FORMAT_24_HOURS)
+    else if ((time_struct->tm_hour > 24 || time_struct->tm_hour < 0) && ds3231_handle->hour_format == DS3231_TIME_FORMAT_24_HOURS)
     {
         ESP_LOGE(TAG, "Invalid hour value. Expected range (24h format): 0<=t<=24, got value: %i instead", time_struct->tm_hour);
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    else if ((time_struct->tm_hour > 12 or time_struct->tm_hour < 0) && ds3231_handle->hour_format == DS3231_TIME_FORMAT_12_HOURS)
+    else if ((time_struct->tm_hour > 12 || time_struct->tm_hour < 0) && ds3231_handle->hour_format == DS3231_TIME_FORMAT_12_HOURS)
     {
         ESP_LOGE(TAG, "Invalid hour value. Expected range (12h format): 0<=t<=12, got value: %i instead", time_struct->tm_hour);
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    else if (time_struct->tm_mday > 31 or time_struct->tm_mday < 1)
+    else if (time_struct->tm_mday > 31 || time_struct->tm_mday < 1)
     {
         ESP_LOGE(TAG, "Invalid day of month value. Expected range: 1<=t<=31, got value: %i instead", time_struct->tm_mday);   
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    else if (time_struct->tm_year-2000 > 99 or time_struct->tm_year-2000 < 0)
+    else if (time_struct->tm_year-2000 > 99 || time_struct->tm_year-2000 < 0)
     {
         ESP_LOGE(TAG, "Invalid year value. Expected range: 0<=t<=99, got value: %i instead", time_struct->tm_year);
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
-    else if (time_struct->tm_wday > 7 or time_struct->tm_wday < 1)
+    else if (time_struct->tm_wday > 7 || time_struct->tm_wday < 1)
     {
         // The day of week can be manually calculated and therfore returns a different code
         ESP_LOGE(TAG, "Invalid weekday value. Expected range: 1<=t<=7, got value: %i instead", time_struct->tm_wday);
@@ -143,7 +165,7 @@ int validate_time(ds3231_handle_t *ds3231_handle, tm *time_struct)
 
     else
     {
-        return 0;
+        return ESP_OK;
     }
 }
 
@@ -173,22 +195,30 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, tm *time_struct)
     for (uint8_t i = 0; i < time_addresses_len; i++)
     {
         register_address[0] = i; // The ds3231 time registers are ordered by ascending values (starting from 0 for seconds)
-        i2c_master_transmit_receive(ds3231_handle->dev_handle, register_address, 1, buffer, 1, -1); // Get relevant register info
-        *time_addresses[i] = (int)bcd_to_decimal(*buffer); // The data is stored in a bcd so it needs to be converted to decimal 
+        
+        if (i2c_master_transmit_receive(ds3231_handle->dev_handle, register_address, 1, buffer, 1, 50) == ESP_OK) // Get relevant register info
+        {
+            *time_addresses[i] = (int)bcd_to_decimal(*buffer); // The data is stored in a bcd so it needs to be converted to decimal 
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Couldn't connect to rtc!");
+            return ESP_ERR_TIMEOUT;
+        }
     }
     reference_time.tm_year += 2000; // The ds3231 stores the year data in a range of 0 to 99
     
     reference_time.tm_hour = (reference_time.tm_hour << 3) >> 3;
 
 
-    if (validate_time(ds3231_handle, &reference_time) != 0)
+    if (validate_time(ds3231_handle, &reference_time) != ESP_OK)
     {
         ESP_LOGE(TAG, "Recieved invalid time from module; Discarding changes...");
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 
     *time_struct = reference_time; // Override the original time struct
-    return 0;
+    return ESP_OK;
 }
 
 int calculate_day_of_week(int year, int month, int day_of_month)
@@ -207,7 +237,7 @@ int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, tm *time_struct)
     char TAG[] = "ds3231";
     int time_validation_err_code = validate_time(ds3231_handle, time_struct);
 
-    if (time_validation_err_code == -2 or time_validation_err_code == 0)
+    if (time_validation_err_code == -2 || time_validation_err_code == ESP_OK)
     {
         if (time_validation_err_code == -2)
         {
@@ -240,12 +270,12 @@ int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, tm *time_struct)
         
         time_struct->tm_year += 2000; // Revert changes made to the time struct
         
-        return 0;
+        return ESP_OK;
     }
     else
     {
         ESP_LOGE(TAG, "Invalid time struct passed; Time was not set...");
-        return -1;
+        return ESP_ERR_INVALID_ARG;
     }
 }
 
@@ -254,6 +284,7 @@ int str_to_month(const char* month)
     /*Convert a month string into a corresponding number*/
     const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
     int num_monthes = sizeof(months_of_year)/sizeof(months_of_year[0]);
+    
     for (int i = 0; i < num_monthes;i++)
     {
         if (strcmp(month, months_of_year[i]) == 0)
@@ -262,7 +293,7 @@ int str_to_month(const char* month)
         }
         
     }
-    return -1; 
+    return ESP_ERR_INVALID_ARG; 
 }
 
 void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle)
@@ -282,12 +313,10 @@ void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle)
     
     sscanf(date_buff, "%s %d %d", month, &time_struct.tm_mday, &time_struct.tm_year); // Extract month to buffer and day and year as intagers
     time_struct.tm_mon = str_to_month(month); // Convert month string to numerical value
-    
+    time_struct.tm_wday = calculate_day_of_week(time_struct.tm_year, time_struct.tm_mon, time_struct.tm_mday); // Manually calculate the day of the week
     int time_validation_err_code = validate_time(ds3231_handle, &time_struct); // Check the time values and check for errors
-    if (time_validation_err_code == 0 or time_validation_err_code == -2)
+    if (time_validation_err_code == ESP_OK)
     {
-        time_struct.tm_wday = calculate_day_of_week(time_struct.tm_year, time_struct.tm_mon, time_struct.tm_mday); // Manually calculate the day of the week
-        ESP_LOGI(TAG, "Manually calculating the day of week");
         ds3231_set_datetime(ds3231_handle, &time_struct); // Set time on rtc if the time is valid
         ESP_LOGI(TAG, "Successfully set time at compilation!");
     }
@@ -298,3 +327,4 @@ void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle)
     }
     
 }
+#endif // DS3231_H
