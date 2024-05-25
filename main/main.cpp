@@ -411,11 +411,6 @@ extern "C" void app_main(void)
     // Rtc setup
     ds3231_dev_handle = ds3231_init(&i2c_master_handle); // rtc setup
 
-    tm test_assign = {.tm_sec = 0, .tm_min = 0, .tm_hour = 23, .tm_mday = 20, .tm_mon = 1, .tm_year = 2194};
-    ds3231_set_datetime(&ds3231_dev_handle, test_assign);
-    ds3231_get_datetime(&ds3231_dev_handle, &test_assign);
-    // ESP_LOGI("ds3231", "%i, %i", test_assign.tm_hour, ds3231_get_am_pm(&ds3231_dev_handle));
-
     // Set Rtc time to compilation time
     #ifdef SET_COMPILE_TIME_FOR_RTC
         ds3231_set_datetime_at_compile(&ds3231_dev_handle);

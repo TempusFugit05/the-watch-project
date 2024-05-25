@@ -22,10 +22,15 @@ DONE!
 
 2.  Add century functionality as described in the docs
     Check that everything works as expected
-    Create new type for specific error codes? - DONE! (Using esp specific error codes)
+    Create new type for specific error codes?
+DONE!
 
-3.  Add alarm functionality (optional(not very useful IMO))
+optional:
+3.  Add alarm functionality
+    Add 12h format support
+I doubt I'll actually add these since they aren't very useful to me...
 */
+
 #ifdef SUPPORT_12H_FORMAT
 typedef enum{
     DS3231_TIME_FORMAT_24_HOURS,
