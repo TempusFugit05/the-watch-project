@@ -35,8 +35,6 @@
 #define BUTTON_DEBOUNCE_COOLDOWN    10000
 #define BUTTON_LONG_PRESS_COOLDOWN  500000
 
-// #define SET_COMPILE_TIME_FOR_RTC
-
 #define SCEEN_SIZE_X 240
 #define SCEEN_SIZE_Y 320
 
@@ -412,9 +410,7 @@ extern "C" void app_main(void)
     ds3231_dev_handle = ds3231_init(&i2c_master_handle); // rtc setup
 
     // Set Rtc time to compilation time
-    #ifdef SET_COMPILE_TIME_FOR_RTC
-        ds3231_set_datetime_at_compile(&ds3231_dev_handle);
-    #endif
+    ds3231_set_datetime_at_compile(&ds3231_dev_handle, false);
 
     // Display setup
     display = *hagl_init();
