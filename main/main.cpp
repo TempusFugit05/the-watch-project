@@ -241,29 +241,53 @@ void get_time()
     } // Manually count time once rtc is unreachable
 }
 
+void month_to_str(int month, char* buffer)
+{
+    /*!Brief This function converts a month index intop a string and writes it to a buffer
+    (Assuming month range is 1-12)*/
+    const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};    
+    memcpy(buffer, months_of_year[month-1], strlen(months_of_year[month-1])+1); // Copy the month string into the buffer (including null terminator)
+}
+
+void weekday_to_str(int weekday, char* buffer)
+{
+    /*Convert weekday into string and writes it into a buffer
+    (Assuming weekday range is 1-7)*/
+    const char* days_of_week[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    memcpy(buffer, days_of_week[weekday-1], strlen(days_of_week[weekday])+1); // Copy the day of week string into the buffer (including null terminator)
+}
+
 void write_time(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS; // 
 
     hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
-    char time_str [32]; // String buffer
-    wchar_t formatted_str [32]; // String buffer compatable with the display library
+    char time_str [64]; // String buffer
+    wchar_t formatted_str [64]; // String buffer compatable with the display library
     while (1)
     {
         get_time();
         snprintf(time_str, 64, "%02i:%02i:%02i", 
         rtc_time.tm_hour, rtc_time.tm_min, rtc_time.tm_sec);
-        mbstowcs(formatted_str, time_str, 32);
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, (DISPLAY_HEIGHT/2 - strlen(time_str)*9), color, font10x20_KOI8_R); // Display string
-        
-        snprintf(time_str, 64, "%02i,%02i,%04i", 
-        rtc_time.tm_mday, rtc_time.tm_mon, rtc_time.tm_year);
-        mbstowcs(formatted_str, time_str, 32);
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, (DISPLAY_HEIGHT/2 - strlen(time_str)*9) + 40, color, font10x20_KOI8_R); // Display string
+        mbstowcs(formatted_str, time_str, 64);
+        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 20, color, font10x20_KOI8_R); // Display string
 
+        char month[10]; // Buffer to store the month's name
+        month_to_str(rtc_time.tm_mon, month);
+        snprintf(time_str, 64, "%02i %s %04i", 
+        rtc_time.tm_mday, month, rtc_time.tm_year);
+        mbstowcs(formatted_str, time_str, 64);
+
+        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 40, color, font10x20_KOI8_R); // Display string
+
+        char weekday[10];
+        weekday_to_str(rtc_time.tm_wday, weekday);
+        wchar_t formatted_weekday[10];
+        mbstowcs(formatted_weekday, weekday, 10);
+        hagl_put_text(&display, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, 60, color, font10x20_KOI8_R); // Display string
+        
         vTaskDelay(task_delay_ms); // Delay for 1 second
     }
-    ESP_LOGI("task_size", "%i", uxTaskGetStackHighWaterMark(NULL));
 }
 
 gptimer_handle_t setup_gptimer()
@@ -287,8 +311,8 @@ gptimer_handle_t setup_gptimer()
     {
         .alarm_count = 0,
         .reload_count = 0,
+        .flags{.auto_reload_on_alarm = false}
     };
-    button_timer_alarm_conf.flags.auto_reload_on_alarm = false;
 
     ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &button_timer_alarm_conf));
     gptimer_event_callbacks_t cbs = 
@@ -372,8 +396,9 @@ i2c_master_bus_handle_t setup_i2c_master()
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
         .intr_priority = 0,
+        .trans_queue_depth = 0,
+        .flags{.enable_internal_pullup = true}
     };
-    i2c_master_conf.flags.enable_internal_pullup = true;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_master_conf, &i2c_master_handle));
     return i2c_master_handle;
 }
@@ -384,7 +409,12 @@ extern "C" void app_main(void)
     i2c_master_bus_handle_t i2c_master_handle = setup_i2c_master();
     
     // Rtc setup
-    ds3231_dev_handle = ds3231_init(&i2c_master_handle, DS3231_TIME_FORMAT_24_HOURS); // rtc setup
+    ds3231_dev_handle = ds3231_init(&i2c_master_handle); // rtc setup
+
+    tm test_assign = {.tm_sec = 0, .tm_min = 0, .tm_hour = 23, .tm_mday = 20, .tm_mon = 1, .tm_year = 2194};
+    ds3231_set_datetime(&ds3231_dev_handle, test_assign);
+    ds3231_get_datetime(&ds3231_dev_handle, &test_assign);
+    // ESP_LOGI("ds3231", "%i, %i", test_assign.tm_hour, ds3231_get_am_pm(&ds3231_dev_handle));
 
     // Set Rtc time to compilation time
     #ifdef SET_COMPILE_TIME_FOR_RTC
@@ -394,7 +424,7 @@ extern "C" void app_main(void)
     // Display setup
     display = *hagl_init();
     hagl_clear(&display);
-    
+
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isr(); // Set up input interrupts
