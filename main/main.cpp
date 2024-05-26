@@ -31,13 +31,13 @@
 #define I2C_SDA_PIN         GPIO_NUM_21
 #define I2C_FREQ_HZ         1000000
 
-#define OLED_REFRESH_RATE   60
-
 #define BUTTON_DEBOUNCE_COOLDOWN    10000
 #define BUTTON_LONG_PRESS_COOLDOWN  500000
 
 #define SCEEN_SIZE_X 240
 #define SCEEN_SIZE_Y 320
+
+// #define CHECK_TASK_SIZES
 
 hagl_backend_t display; // Main display 
 
@@ -145,13 +145,14 @@ one of them will always change before the other when rotating clockwise and vise
     }
 }
 
-void input_events_handler(void* arg)
+void input_events_handler_task(void* arg)
 {
     /*This tasks is responisble for handling the input events from buttons and encoders.
     It gets the info from a queue to which the input ISR's handlers send a message when they are activated*/
     
     input_event_t event; // Event type
     char* event_id = "";
+    const char TAG[] = "input_events_handler_task";
     while(1){
         if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
         {
@@ -182,7 +183,9 @@ void input_events_handler(void* arg)
                     break;
             }
         ESP_LOGI("input_event", "%s", event_id);
-        // ESP_LOGI("task_size", "%i", uxTaskGetStackHighWaterMark(NULL));
+        #ifdef CHECK_TASK_SIZES
+            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
         }
     }
 }
@@ -208,36 +211,45 @@ void manual_time_count()
     }
 }
 
-void get_time()
+void time_keeper_task(void* arg)
 {
     // Gets the time from the rtc module, if rtc fails, starts manual time counting
     // BUG: When disconnecting the ds3231 from power, the program crashes...
     // (Possibly a hardware problem?)
     // Follow up: Turns out this only happens when disconnecting the scl or power pins...
+    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
+    static char TAG[] = "get_time_task";
+    static bool manual_time_keeping = false; // Flag to determin if the function should switch to manual time counting
 
-    static char TAG[] = "get_time";
-    static bool manual_time_keeping = false;
-
-    if(i2c_master_probe(i2c_master_handle, DS3231_I2C_ADDRESS, 100) == ESP_OK)
+    while (1)
     {
-        if (manual_time_keeping)
+        if(i2c_master_probe(i2c_master_handle, DS3231_I2C_ADDRESS, 50) == ESP_OK)
         {
-            manual_time_keeping = false;
-            ESP_LOGI(TAG, "rtc recconnected! Reading from rtc...");
-        }
-        ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
-    }// Get time from the rtc if it is connected to the esp
-    
-    else
-    {
-        if (!manual_time_keeping)
+            if (manual_time_keeping)
+            {
+                manual_time_keeping = false;
+                ESP_LOGI(TAG, "rtc recconnected! Reading from rtc...");
+            }
+            ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
+        }// Get time from the rtc if it is connected to the esp
+        
+        else
         {
-            ESP_LOGE(TAG, "Couldn't connect to the rtc! Starting manual time-keeping...");
-            manual_time_keeping = true;
-        } // Runs once when rtc is unreachable to prevent unecessary console spam
+            if (!manual_time_keeping)
+            {
+                ESP_LOGE(TAG, "Couldn't connect to the rtc! Starting manual time-keeping...");
+                manual_time_keeping = true;
+            } // Runs once when rtc is unreachable to prevent unecessary console spam
 
-        manual_time_count();
-    } // Manually count time once rtc is unreachable
+            manual_time_count();
+        } // Manually count time once rtc is unreachable
+
+        vTaskDelay(task_delay_ms); // Delay for 1 second
+
+        #ifdef CHECK_TASK_SIZES
+            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
+    }
 }
 
 void month_to_str(int month, char* buffer)
@@ -256,16 +268,17 @@ void weekday_to_str(int weekday, char* buffer)
     memcpy(buffer, days_of_week[weekday-1], strlen(days_of_week[weekday])+1); // Copy the day of week string into the buffer (including null terminator)
 }
 
-void write_time(void* arg)
+void write_time_task(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS; // 
 
     hagl_color_t color = hagl_color(&display, 255, 100, 255); // Placeholder color (Note: the r and b channels are inverted on my display)
     char time_str [64]; // String buffer
     wchar_t formatted_str [64]; // String buffer compatable with the display library
+    const char TAG[] = "write_time_task";
+
     while (1)
     {
-        get_time();
         snprintf(time_str, 64, "%02i", rtc_time.tm_hour);
         int text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
         int text_cords_y = 20 + segment_font.size_y;
@@ -299,6 +312,9 @@ void write_time(void* arg)
         mbstowcs(formatted_weekday, weekday, 10);
         hagl_put_text(&display, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, 220, color, font10x20_KOI8_R); // Display string
         
+        #ifdef CHECK_TASK_SIZES
+            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
         vTaskDelay(task_delay_ms); // Delay for 1 second
     }
 }
@@ -316,6 +332,7 @@ gptimer_handle_t setup_gptimer()
         .direction = GPTIMER_COUNT_DOWN,
         .resolution_hz = 1000000,
         .intr_priority = 0,
+        .flags{.intr_shared=false}
     };
 
     ESP_ERROR_CHECK(gptimer_new_timer(&button_timer_conf, &gptimer)); // Create timer object
@@ -427,6 +444,8 @@ extern "C" void app_main(void)
     // Set Rtc time to compilation time
     ds3231_set_datetime_at_compile(&ds3231_dev_handle, false);
 
+    ds3231_get_datetime(&ds3231_dev_handle, &rtc_time);
+
     // Display setup
     display = *hagl_init();
     hagl_clear(&display);
@@ -436,17 +455,15 @@ extern "C" void app_main(void)
     setup_isr(); // Set up input interrupts
     hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
 
-    // char text[] = "123456";
-    // wchar_t text2[12];
-    // mbstowcs(text2, text, 12);
-
-    // hagl_put_text(&display, text2, 20 ,20, color, test_font);
+    // Time-keeping task
+    TaskHandle_t time_keeper_task_handle;
+    xTaskCreatePinnedToCore(time_keeper_task, "time_keeper", 2048, NULL, 5, &time_keeper_task_handle, 0);
 
     // Task to handle the various input interrupt signals
-    TaskHandle_t input_events_handler_task;
-    xTaskCreatePinnedToCore(input_events_handler, "write_time_task", 4096, NULL, 4, &input_events_handler_task, 0);
+    TaskHandle_t input_events_handler_task_handle;
+    xTaskCreatePinnedToCore(input_events_handler_task, "write_time_task", 4096, NULL, 4, &input_events_handler_task_handle, 0);
 
-    // Time-keeping task
-    TaskHandle_t write_time_task;
-    xTaskCreatePinnedToCore(write_time, "write_time_task", 4096, NULL, 4, &write_time_task, 0);
-    }
+    // Writes time to display
+    TaskHandle_t write_time_task_handle;
+    xTaskCreate(write_time_task, "write_time_task", 4096, NULL, 4, &write_time_task_handle); // TODO replace with actrual ui system
+}
