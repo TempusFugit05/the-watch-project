@@ -111,12 +111,6 @@ int validate_time(ds3231_handle_t *ds3231_handle, tm *time_struct)
         return ESP_ERR_INVALID_ARG;
     }
 
-    else if (time_struct->tm_wday > 7 || time_struct->tm_wday < 1)
-    {
-        ESP_LOGE(TAG, "Invalid weekday value. Expected range: 1<=t<=7, got value: %i instead", time_struct->tm_wday);
-        return ESP_ERR_INVALID_ARG;
-    }
-
     else
     {
         return ESP_OK;
