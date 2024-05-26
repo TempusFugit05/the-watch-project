@@ -6,11 +6,14 @@
 #include <ctime>
 
 #define DS3231_I2C_ADDRESS          0x68
+
 #define SECONDS_REGISTER_ADDRESS    0x00
 #define MINUTES_REGISTER_ADDRESS    0x01
 #define HOURS_REGISTER_ADDRESS      0x02
-#define DAYS_REGISTER_ADDRESS       0x03
-#define YEARS_REGISTER_ADDRESS      0x04
+#define DAY_WEEK_REGISTER_ADDRESS   0x03
+#define DAY_MONTH_REGISTER_ADDRESS  0x04
+#define MONTH_REGISTER_ADDRESS      0x05
+#define YEAR_REGISTER_ADDRESS       0x06
 
 
 /*TODO:
@@ -27,6 +30,12 @@ optional:
 3.  Add alarm functionality
     Add 12h format support
 I doubt I'll actually add these since they aren't very useful to me...
+
+FINAL STRETCH:
+4.  Add specific error codes
+    Seperate the c and header files
+    Add proper doxygen documentation 
+    Create an esp-idf component for the rtc
 */
 
 typedef struct
@@ -104,9 +113,8 @@ int validate_time(ds3231_handle_t *ds3231_handle, tm *time_struct)
 
     else if (time_struct->tm_wday > 7 || time_struct->tm_wday < 1)
     {
-        // The day of week can be manually calculated and therfore returns a different code
         ESP_LOGE(TAG, "Invalid weekday value. Expected range: 1<=t<=7, got value: %i instead", time_struct->tm_wday);
-        return -2; 
+        return ESP_ERR_INVALID_ARG;
     }
 
     else
@@ -145,7 +153,7 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, tm *time_struct)
         
         if (i2c_master_transmit_receive(ds3231_handle->dev_handle, &register_address, 1, &data_buffer, 1, -1) == ESP_OK) // Get relevant register info
         {
-            if (i == 5 && (data_buffer >> 7) == 1){data_buffer -= 0b10000000; century_overflow=true;} // Adjust value to remove century-overflow data
+            if (i == MONTH_REGISTER_ADDRESS && (data_buffer >> 7) == 1){data_buffer -= 0b10000000; century_overflow=true;} // Adjust value to remove century-overflow data
             *time_addresses[i] = (int)bcd_to_decimal(data_buffer); // The data is stored in a bcd so it needs to be converted to decimal 
         }
         else
@@ -226,7 +234,7 @@ int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, tm time_struct)
         for (uint8_t i = 0; i < time_addresses_len; i++)
         {
             uint8_t buffer[2] = {i, decimal_to_bcd(*time_addresses[i])}; // Convert time to bcd format
-            if (i==5 && century_overflow) {buffer[1] += 0b10000000;} // Set month's 8th bit to 1 if there is a century overflow
+            if (i == MONTH_REGISTER_ADDRESS && century_overflow) {buffer[1] += 0b10000000;} // Set month's 8th bit to 1 if there is a century overflow
             i2c_master_transmit(dev_handle, buffer, 2, -1); // Set registers
         }
 

@@ -15,6 +15,7 @@
 #include "fonts/font9x18B-ISO8859-1.h"
 #include "fonts/font10x20-KOI8-R.h"
 #include "font6x9.h"
+#include "fonts/test_font.h"
 
 #include "ds3231.h"
 #include "string.h"
@@ -259,16 +260,30 @@ void write_time(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS; // 
 
-    hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
+    hagl_color_t color = hagl_color(&display, 255, 100, 255); // Placeholder color (Note: the r and b channels are inverted on my display)
     char time_str [64]; // String buffer
     wchar_t formatted_str [64]; // String buffer compatable with the display library
     while (1)
     {
         get_time();
-        snprintf(time_str, 64, "%02i:%02i:%02i", 
-        rtc_time.tm_hour, rtc_time.tm_min, rtc_time.tm_sec);
+        snprintf(time_str, 64, "%02i", rtc_time.tm_hour);
+        int text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
+        int text_cords_y = 20 + segment_font.size_y;
         mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 20, color, font10x20_KOI8_R); // Display string
+        hagl_put_text(&display, formatted_str, text_cords_x, 40, color, segment_font.font); // Display string
+
+        snprintf(time_str, 64, "%02i", rtc_time.tm_min);
+        text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
+        text_cords_y += segment_font.size_y + 10;
+        mbstowcs(formatted_str, time_str, 64);
+        hagl_put_text(&display, formatted_str, text_cords_x, 85, color, segment_font.font); // Display string
+
+        snprintf(time_str, 64, "%02i", rtc_time.tm_sec);
+        text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
+        text_cords_y += segment_font.size_y + 10;
+        mbstowcs(formatted_str, time_str, 64);
+        hagl_put_text(&display, formatted_str, text_cords_x, 130, color, segment_font.font); // Display string
+
 
         char month[10]; // Buffer to store the month's name
         month_to_str(rtc_time.tm_mon, month);
@@ -276,13 +291,13 @@ void write_time(void* arg)
         rtc_time.tm_mday, month, rtc_time.tm_year);
         mbstowcs(formatted_str, time_str, 64);
 
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 40, color, font10x20_KOI8_R); // Display string
+        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 200, color, font10x20_KOI8_R); // Display string
 
         char weekday[10];
         weekday_to_str(rtc_time.tm_wday, weekday);
         wchar_t formatted_weekday[10];
         mbstowcs(formatted_weekday, weekday, 10);
-        hagl_put_text(&display, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, 60, color, font10x20_KOI8_R); // Display string
+        hagl_put_text(&display, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, 220, color, font10x20_KOI8_R); // Display string
         
         vTaskDelay(task_delay_ms); // Delay for 1 second
     }
@@ -419,6 +434,13 @@ extern "C" void app_main(void)
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isr(); // Set up input interrupts
+    hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
+
+    // char text[] = "123456";
+    // wchar_t text2[12];
+    // mbstowcs(text2, text, 12);
+
+    // hagl_put_text(&display, text2, 20 ,20, color, test_font);
 
     // Task to handle the various input interrupt signals
     TaskHandle_t input_events_handler_task;
