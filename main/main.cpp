@@ -444,8 +444,6 @@ extern "C" void app_main(void)
     // Set Rtc time to compilation time
     ds3231_set_datetime_at_compile(&ds3231_dev_handle, false);
 
-    ds3231_get_datetime(&ds3231_dev_handle, &rtc_time);
-
     // Display setup
     display = *hagl_init();
     hagl_clear(&display);
