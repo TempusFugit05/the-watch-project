@@ -34,7 +34,7 @@
 #define BUTTON_LONG_PRESS_COOLDOWN  500000
 
 #define SCEEN_SIZE_X 240
-#define SCEEN_SIZE_Y 320
+#define SCEEN_SIZE_Y 240
 
 // #define CHECK_TASK_SIZES
 
@@ -49,7 +49,6 @@ i2c_master_bus_handle_t i2c_master_handle;
 tm rtc_time; // Time from the rtc module
 
 typedef enum : uint8_t{
-    FOO,
     SHORT_PRESS_EVENT,
     LONG_PRESS_EVENT,
     SCROLL_UP_EVENT,
@@ -254,7 +253,7 @@ void time_keeper_task(void* arg)
 
 void write_time_task(void* arg)
 {
-    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS; // 
+    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
     const char TAG[] = "write_time_task";
     bounding_box_t test_bounding_box {.x_min=0, .x_max=0, .y_min=0, .y_max=0};
     
@@ -412,12 +411,12 @@ extern "C" void app_main(void)
     ds3231_dev_handle = ds3231_init(&i2c_master_handle); // rtc setup
 
     // Set Rtc time to compilation time
-    ds3231_set_datetime_at_compile(&ds3231_dev_handle, true);
-
-    ds3231_get_datetime(&ds3231_dev_handle, &rtc_time);
+    ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
+    ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
 
     // Display setup
     display = hagl_init();
+    if (display == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
     hagl_clear(display);
 
     // hagl_color_t foo_color = hagl_color(display, 255, 255, 255);
@@ -429,7 +428,7 @@ extern "C" void app_main(void)
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isr(); // Set up input interrupts
-
+    
     // Time-keeping task
     TaskHandle_t time_keeper_task_handle;
     xTaskCreatePinnedToCore(time_keeper_task, "time_keeper", 2048, NULL, 5, &time_keeper_task_handle, 0);
@@ -442,7 +441,3 @@ extern "C" void app_main(void)
     TaskHandle_t write_time_task_handle;
     xTaskCreate(write_time_task, "write_time_task", 4096, NULL, 3, &write_time_task_handle); // TODO replace with actrual ui system
 }
-
-/*BUGS! 
-    The 
-*/

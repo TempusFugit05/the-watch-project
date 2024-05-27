@@ -62,12 +62,23 @@ extern "C" void clock_app::update_time(tm time)
 
 extern "C" bool clock_app::get_update_status()
 {   
+    /*Update the internal reference and current times and return true if they were updated*/
+
+    // mktime assumes tm_year is years since 1900.
+    // It will also automatically calculate the weekday and override the original value.
+    // Therefore tm needs to be modified before passing it
+    reference_time.tm_year -= 1900;
+    current_time.tm_year -= 1900;
+
     if (difftime(mktime(&reference_time), mktime(&current_time)) < 0) 
     {
+        reference_time.tm_year += 1900;
+        current_time.tm_year += 1900;
         reference_time = current_time;
         return true;
     } // Check if the time got iterated since last run and update accordingly
-    
+    reference_time.tm_year += 1900;
+    current_time.tm_year += 1900;
     return false; // Return false if time was not iterated
 }
 
@@ -92,7 +103,7 @@ extern "C" void clock_app::run_app ()
     text_cords_y += segment_font.size_y + 10;
     mbstowcs(formatted_str, time_str, 64);
     hagl_put_text(display_handle, formatted_str, text_cords_x, 130, color, segment_font.font); // Display string
-
+    
     char month[10]; // Buffer to store the month's name
     month_to_str(current_time.tm_mon, month);
     snprintf(time_str, 64, "%02i %s %04i", 

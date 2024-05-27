@@ -257,7 +257,7 @@ int str_to_month(const char* month)
     return ESP_ERR_INVALID_ARG; 
 }
 
-void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, bool force_setting)
+int ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, i2c_master_bus_handle_t *i2c_bus_handle, bool force_setting)
 {
     /*Set the time during the compilation 
     (Useful for testing or setting the initial time for the module)*/
@@ -277,7 +277,7 @@ void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, bool force_s
     compile_time.tm_wday = calculate_day_of_week(compile_time.tm_year, compile_time.tm_mon, compile_time.tm_mday); // Manually calculate the day of the week
     
     
-    if (validate_time(ds3231_handle, &compile_time) == ESP_OK)
+    if (validate_time(ds3231_handle, &compile_time) == ESP_OK && i2c_master_probe(*i2c_bus_handle, DS3231_I2C_ADDRESS,50) == ESP_OK)
     {
         if (force_setting)
         {
@@ -289,8 +289,15 @@ void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, bool force_s
             tm time_from_rtc;
             ds3231_get_datetime(ds3231_handle, &time_from_rtc);
 
+            // mktime assumes tm_year is years since 1900.
+            // It will also automatically calculate the weekday and override the original value.
+            // Therefore tm needs to be modified before passing it
+            compile_time.tm_year -= 1900; 
+            time_from_rtc.tm_year -= 1900;
+            
             if(difftime(mktime(&compile_time), mktime(&time_from_rtc)) > 0)
             {
+            compile_time.tm_year += 1900;
                 ds3231_set_datetime(ds3231_handle, compile_time); // Set time on rtc if the time is valid
                 ESP_LOGI(TAG, "Successfully set time at compilation!");
             } // If compilation time is newere than rtc time, set time at compilation
@@ -299,13 +306,15 @@ void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, bool force_s
             {
                 ESP_LOGI(TAG, "The time on the rtc is newer that the time at compilation. Time was not set");
             }
-        }
 
+        }
+        return ESP_OK;
     }
 
     else
     {
         ESP_LOGE(TAG, "Couldn't set the time!"); // Error if something went terribly wrong
+        return ESP_ERR_INVALID_STATE;
     }
     
 }
