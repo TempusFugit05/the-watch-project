@@ -3520,4 +3520,4 @@ font segment_font
 };
 
 
-#endif /* FONT_FNT_H */
+#endif // FONT_FNT_H

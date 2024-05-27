@@ -12,13 +12,12 @@
 
 #include "hagl_hal.h"
 #include "hagl.h"
-#include "fonts/font9x18B-ISO8859-1.h"
-#include "fonts/font10x20-KOI8-R.h"
-#include "font6x9.h"
-#include "fonts/test_font.h"
 
 #include "ds3231.h"
 #include "string.h"
+#include "apps.h"
+
+// #include "font6x9.h"
 
 #define LED_PIN             GPIO_NUM_2
 #define GPIO_VIBRATOR_PIN   GPIO_NUM_25
@@ -39,7 +38,7 @@
 
 // #define CHECK_TASK_SIZES
 
-hagl_backend_t display; // Main display 
+hagl_backend_t* display; // Main display 
 
 gptimer_handle_t button_timer; // Timer for button software debounce
 
@@ -214,6 +213,7 @@ void manual_time_count()
 void time_keeper_task(void* arg)
 {
     // Gets the time from the rtc module, if rtc fails, starts manual time counting
+
     // BUG: When disconnecting the ds3231 from power, the program crashes...
     // (Possibly a hardware problem?)
     // Follow up: Turns out this only happens when disconnecting the scl or power pins...
@@ -252,69 +252,39 @@ void time_keeper_task(void* arg)
     }
 }
 
-void month_to_str(int month, char* buffer)
-{
-    /*!Brief This function converts a month index intop a string and writes it to a buffer
-    (Assuming month range is 1-12)*/
-    const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};    
-    memcpy(buffer, months_of_year[month-1], strlen(months_of_year[month-1])+1); // Copy the month string into the buffer (including null terminator)
-}
-
-void weekday_to_str(int weekday, char* buffer)
-{
-    /*Convert weekday into string and writes it into a buffer
-    (Assuming weekday range is 1-7)*/
-    const char* days_of_week[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    memcpy(buffer, days_of_week[weekday-1], strlen(days_of_week[weekday])+1); // Copy the day of week string into the buffer (including null terminator)
-}
-
 void write_time_task(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS; // 
-
-    hagl_color_t color = hagl_color(&display, 255, 100, 255); // Placeholder color (Note: the r and b channels are inverted on my display)
-    char time_str [64]; // String buffer
-    wchar_t formatted_str [64]; // String buffer compatable with the display library
     const char TAG[] = "write_time_task";
+    bounding_box_t test_bounding_box {.x_min=0, .x_max=0, .y_min=0, .y_max=0};
+    
+    clock_app clock_app(rtc_time, test_bounding_box, display);
+
+    /*BUG:
+        An extremely bizzare bug!
+        This print statements prevent the program from crushing.
+        The bug seems to be related with the hagl_put_text function inside clock_app.run_app.
+        When removing this line, the esp gets restarted by wdt and then repeatedly crashes.
+        I HAVE NO IDEA WHY THAT HAPPENS!
+        My guess is, that some amount of computation has to happen before calling clock_app.run for it not to crush.
+        This, however still doesn't explain why it would happen in the first place...
+    */
+
+    ESP_LOGI("write_time_task", "I PREVENT A CRUSH");
 
     while (1)
     {
-        snprintf(time_str, 64, "%02i", rtc_time.tm_hour);
-        int text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
-        int text_cords_y = 20 + segment_font.size_y;
-        mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(&display, formatted_str, text_cords_x, 40, color, segment_font.font); // Display string
+        clock_app.update_time(rtc_time);
 
-        snprintf(time_str, 64, "%02i", rtc_time.tm_min);
-        text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
-        text_cords_y += segment_font.size_y + 10;
-        mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(&display, formatted_str, text_cords_x, 85, color, segment_font.font); // Display string
+        if (clock_app.get_update_status())
+        {
+            clock_app.run_app();
+        }
 
-        snprintf(time_str, 64, "%02i", rtc_time.tm_sec);
-        text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
-        text_cords_y += segment_font.size_y + 10;
-        mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(&display, formatted_str, text_cords_x, 130, color, segment_font.font); // Display string
-
-
-        char month[10]; // Buffer to store the month's name
-        month_to_str(rtc_time.tm_mon, month);
-        snprintf(time_str, 64, "%02i %s %04i", 
-        rtc_time.tm_mday, month, rtc_time.tm_year);
-        mbstowcs(formatted_str, time_str, 64);
-
-        hagl_put_text(&display, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 200, color, font10x20_KOI8_R); // Display string
-
-        char weekday[10];
-        weekday_to_str(rtc_time.tm_wday, weekday);
-        wchar_t formatted_weekday[10];
-        mbstowcs(formatted_weekday, weekday, 10);
-        hagl_put_text(&display, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, 220, color, font10x20_KOI8_R); // Display string
-        
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
+
         vTaskDelay(task_delay_ms); // Delay for 1 second
     }
 }
@@ -442,16 +412,23 @@ extern "C" void app_main(void)
     ds3231_dev_handle = ds3231_init(&i2c_master_handle); // rtc setup
 
     // Set Rtc time to compilation time
-    ds3231_set_datetime_at_compile(&ds3231_dev_handle, false);
+    ds3231_set_datetime_at_compile(&ds3231_dev_handle, true);
+
+    ds3231_get_datetime(&ds3231_dev_handle, &rtc_time);
 
     // Display setup
-    display = *hagl_init();
-    hagl_clear(&display);
+    display = hagl_init();
+    hagl_clear(display);
+
+    // hagl_color_t foo_color = hagl_color(display, 255, 255, 255);
+    // char a[16] = "fsdfefa";
+    // wchar_t w[16];
+    // mbstowcs(w, a, 16);
+    // hagl_put_text(display, w, 100, 100, foo_color, font6x9);
 
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isr(); // Set up input interrupts
-    hagl_color_t color = hagl_color(&display, 255, 0, 0); // Placeholder color (Note: the r and b channels are inverted on my display)
 
     // Time-keeping task
     TaskHandle_t time_keeper_task_handle;
@@ -459,9 +436,13 @@ extern "C" void app_main(void)
 
     // Task to handle the various input interrupt signals
     TaskHandle_t input_events_handler_task_handle;
-    xTaskCreatePinnedToCore(input_events_handler_task, "write_time_task", 4096, NULL, 4, &input_events_handler_task_handle, 0);
+    xTaskCreatePinnedToCore(input_events_handler_task, "input_events_handler_task", 2048, NULL, 5, &input_events_handler_task_handle, 0);
 
     // Writes time to display
     TaskHandle_t write_time_task_handle;
-    xTaskCreate(write_time_task, "write_time_task", 4096, NULL, 4, &write_time_task_handle); // TODO replace with actrual ui system
+    xTaskCreate(write_time_task, "write_time_task", 4096, NULL, 3, &write_time_task_handle); // TODO replace with actrual ui system
 }
+
+/*BUGS! 
+    The 
+*/
