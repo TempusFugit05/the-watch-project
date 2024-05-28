@@ -15,9 +15,7 @@
 #include "string.h"
 #include "apps.h"
 
-extern "C"{
 #include "ds3231.h"
-}
 
 #define LED_PIN             GPIO_NUM_2
 #define GPIO_VIBRATOR_PIN   GPIO_NUM_25

@@ -1,6 +1,10 @@
 #ifndef DS3231_H
 #define DS3231_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif 
+
 #include "driver/i2c_master.h"
 #include "stdlib.h"
 #include "time.h"
@@ -93,5 +97,9 @@ int calculate_day_of_week(int year, int month, int day_of_month);
  * @return The numerical value of the month (1-12), or ESP_ERR_INVALID_ARG if the month is invalid
  */
 int str_to_month(const char *month);
+
+#ifdef __cplusplus
+}
+#endif 
 
 #endif // DS3231_H
