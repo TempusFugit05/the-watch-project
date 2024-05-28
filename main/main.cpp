@@ -12,12 +12,12 @@
 
 #include "hagl_hal.h"
 #include "hagl.h"
-
-#include "ds3231.h"
 #include "string.h"
 #include "apps.h"
 
-// #include "font6x9.h"
+extern "C"{
+#include "ds3231.h"
+}
 
 #define LED_PIN             GPIO_NUM_2
 #define GPIO_VIBRATOR_PIN   GPIO_NUM_25
@@ -149,7 +149,7 @@ void input_events_handler_task(void* arg)
     It gets the info from a queue to which the input ISR's handlers send a message when they are activated*/
     
     input_event_t event; // Event type
-    char* event_id = "";
+    char event_id[32];
     const char TAG[] = "input_events_handler_task";
     while(1){
         if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
@@ -160,22 +160,22 @@ void input_events_handler_task(void* arg)
                     static bool led_state = false;
                     led_state = !led_state;
                     gpio_set_level(LED_PIN, led_state);
-                    event_id = "SHORT_PRESS_EVENT";
+                    sprintf(event_id, "SHORT_PRESS_EVENT");
                     break;
                 
                 case LONG_PRESS_EVENT:
                     static bool vibrator_state = false;
                     vibrator_state = !vibrator_state;
                     gpio_set_level(GPIO_VIBRATOR_PIN, vibrator_state);
-                    event_id = "LONG_PRESS_EVENT";
+                    sprintf(event_id, "LONG_PRESS_EVENT");
                     break;
 
                 case SCROLL_UP_EVENT:
-                    event_id = "SCROLL_UP_EVENT";
+                    sprintf(event_id, "SCROLL_UP_EVENT");
                     break;
 
                 case SCROLL_DOWN_EVENT:
-                    event_id = "SCROLL_DOWN_EVENT";
+                    sprintf(event_id, "SCROLL_DOWN_EVENT");
                     break;
                 default:
                     break;
@@ -387,6 +387,7 @@ void setup_isr()
 i2c_master_bus_handle_t setup_i2c_master()
 {
     // Set up the i2c master bus
+    ESP_LOGI("Setup", "Setting up i2c bus");
     i2c_master_bus_config_t i2c_master_conf =
     {
         .i2c_port = 1,
@@ -418,12 +419,6 @@ extern "C" void app_main(void)
     display = hagl_init();
     if (display == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
     hagl_clear(display);
-
-    // hagl_color_t foo_color = hagl_color(display, 255, 255, 255);
-    // char a[16] = "fsdfefa";
-    // wchar_t w[16];
-    // mbstowcs(w, a, 16);
-    // hagl_put_text(display, w, 100, 100, foo_color, font6x9);
 
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
