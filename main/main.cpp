@@ -51,13 +51,23 @@ typedef enum : uint8_t{
     LONG_PRESS_EVENT,
     SCROLL_UP_EVENT,
     SCROLL_DOWN_EVENT,
+    NUM_EVENTS
 }input_event_t; // Input event flags for the input events queue
 
 typedef enum : uint8_t{
-    CLOCK_APP
+    CLOCK_APP,
+    HEART_RATE_APP,
+    NUM_APPS,
 }app_t;
 
+typedef enum : uint8_t{
+    MAIN_SCREEN_CLOCK_FACE,
+    MAIN_SCREEN_HEART_RATE_FACE,
+    NUM_MAIN_SCREEN_FACES,
+}main_screen_faces_t;
+
 QueueHandle_t input_event_queue = xQueueCreate(10, sizeof(input_event_t)); // Queue for input events (used in input isrs and input event task)
+
 
 static void IRAM_ATTR gpio_button_isr_handler(void* arg)
 {
@@ -145,51 +155,6 @@ one of them will always change before the other when rotating clockwise and vise
     }
 }
 
-void input_events_handler_task(void* arg)
-{
-    /*This tasks is responisble for handling the input events from buttons and encoders.
-    It gets the info from a queue to which the input ISR's handlers send a message when they are activated*/
-    
-    input_event_t event; // Event type
-    char event_id[32];
-    const char TAG[] = "input_events_handler_task";
-    while(1){
-        if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
-        {
-            switch (event)
-            {
-                case SHORT_PRESS_EVENT:
-                    static bool led_state = false;
-                    led_state = !led_state;
-                    gpio_set_level(LED_PIN, led_state);
-                    sprintf(event_id, "SHORT_PRESS_EVENT");
-                    break;
-                
-                case LONG_PRESS_EVENT:
-                    static bool vibrator_state = false;
-                    vibrator_state = !vibrator_state;
-                    gpio_set_level(GPIO_VIBRATOR_PIN, vibrator_state);
-                    sprintf(event_id, "LONG_PRESS_EVENT");
-                    break;
-
-                case SCROLL_UP_EVENT:
-                    sprintf(event_id, "SCROLL_UP_EVENT");
-                    break;
-
-                case SCROLL_DOWN_EVENT:
-                    sprintf(event_id, "SCROLL_DOWN_EVENT");
-                    break;
-                default:
-                    break;
-            }
-        ESP_LOGI("input_event", "%s", event_id);
-        #ifdef CHECK_TASK_SIZES
-            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
-        #endif
-        }
-    }
-}
-
 void manual_time_count()
 {
     // This function is a rudamentary way to keep track of the time if the rtc fails
@@ -261,7 +226,55 @@ void inline call_run_app(void* param)
     static_cast<app*>(param)->run_app();
 }
 
-void write_time_task(void* arg)
+void input_events_handler_task(void* arg)
+{
+    /*This tasks is responisble for handling the input events from buttons and encoders.
+    It gets the info from a queue to which the input ISR's handlers send a message when they are activated*/
+    
+    input_event_t event; // Event type
+    char event_id[32];
+    const char TAG[] = "input_events_handler_task";
+    while(1){
+        if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
+        {
+        
+            switch (event)
+            {
+                case SHORT_PRESS_EVENT:
+                    static bool led_state = false;
+                    led_state = !led_state;
+                    gpio_set_level(LED_PIN, led_state);
+                    sprintf(event_id, "SHORT_PRESS_EVENT");
+                    
+                    break;
+                
+                case LONG_PRESS_EVENT:
+                    static bool vibrator_state = false;
+                    vibrator_state = !vibrator_state;
+                    gpio_set_level(GPIO_VIBRATOR_PIN, vibrator_state);
+                    sprintf(event_id, "LONG_PRESS_EVENT");
+                    break;
+
+                case SCROLL_UP_EVENT:
+                    sprintf(event_id, "SCROLL_UP_EVENT");
+                    break;
+
+                case SCROLL_DOWN_EVENT:
+                    sprintf(event_id, "SCROLL_DOWN_EVENT");
+                    break;
+                default:
+                    break;
+            }
+        ESP_LOGI("input_event", "%s", event_id);
+        
+        #ifdef CHECK_TASK_SIZES
+            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
+        }
+    }
+}
+
+void app_manager_task(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
     const char TAG[] = "write_time_task";
@@ -284,21 +297,18 @@ void write_time_task(void* arg)
 
     while (1)
     {
-        // clock_app.update_time(rtc_time);
-
-        // if (clock_app.get_update_status())
-        // {
-        //     clock_app.run_app();
-        // }
-
         switch (app_to_run)
         {
         case CLOCK_APP:
             {
-                app *app_obj = new clock_app(&rtc_time, test_bounding_box, &display);
-                TaskHandle_t tsk;
-                xTaskCreate(call_run_app, "clock_app", 2048, app_obj, 3, &tsk);
-
+                clock_app *clock_app_obj = new clock_app(&rtc_time, test_bounding_box, &display); // Create app instance
+                TaskHandle_t clock_app_task_handle;
+                xTaskCreate(call_run_app, "clock_app", 2048, clock_app_obj, 3, &clock_app_task_handle); // Create task to call run_app
+                clock_app_obj->set_task_handle(clock_app_task_handle); // Assign the app its task handle (for later deletion)
+                ESP_LOGW("app", "created");
+                vTaskDelay(5000 / portTICK_PERIOD_MS);
+                delete clock_app_obj;
+                ESP_LOGW("app", "deleted");
                 break;
             }
         default:
@@ -309,7 +319,7 @@ void write_time_task(void* arg)
             ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
 
-        vTaskDelay(portMAX_DELAY); // Delay for 1 second
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 }
 
@@ -389,7 +399,7 @@ void setup_gpio()
     gpio_config(&encoder_io_conf);
 }
 
-void setup_isr()
+void setup_isrs()
 {
     ESP_LOGI("Setup", "Setting up interrupts");
 
@@ -448,7 +458,7 @@ extern "C" void app_main(void)
 
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
-    setup_isr(); // Set up input interrupts
+    setup_isrs(); // Set up input interrupts
     
     // Time-keeping task
     TaskHandle_t time_keeper_task_handle;
@@ -460,5 +470,5 @@ extern "C" void app_main(void)
 
     // Writes time to display
     TaskHandle_t write_time_task_handle;
-    xTaskCreate(write_time_task, "write_time_task", 4096, NULL, 3, &write_time_task_handle); // TODO replace with actrual ui system
+    xTaskCreate(app_manager_task, "app_manager_task", 4096, NULL, 3, &write_time_task_handle); // TODO replace with actrual ui system
 }

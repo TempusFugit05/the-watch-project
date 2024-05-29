@@ -22,10 +22,12 @@ typedef struct
 } bounding_box_t;
 
 class app
-{
+{    
 public:
-    virtual bool get_update_status() = 0;
-    virtual void run_app() = 0;
+    app();
+    virtual ~app();
+    virtual bool get_update_status();
+    virtual void run_app();
 };
 
 class clock_app : public app
@@ -45,8 +47,31 @@ class clock_app : public app
     
     public:
     clock_app(tm* time, bounding_box_t bounding_box, hagl_backend_t* app_display);
+    ~clock_app();
+
+    TaskHandle_t set_task_handle(const TaskHandle_t app_task_handle);
+    TaskHandle_t get_task_handle();
+
     bool get_update_status() override;
     void run_app () override;
+
+};
+
+class test_app : public app
+{
+    private:
+        hagl_backend_t* display_handle;
+        TaskHandle_t task_handle;
+
+    public:
+        test_app(hagl_backend_t* app_display);
+        ~test_app();
+
+        bool get_update_status();
+        void run_app ();
+        
+        TaskHandle_t set_task_handle(const TaskHandle_t app_task_handle);
+        TaskHandle_t get_task_handle();
 };
 
 #ifdef __cplusplus
