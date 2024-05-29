@@ -36,7 +36,7 @@
 
 // #define CHECK_TASK_SIZES
 
-hagl_backend_t* display; // Main display 
+hagl_backend_t display; // Main display 
 
 gptimer_handle_t button_timer; // Timer for button software debounce
 
@@ -52,6 +52,10 @@ typedef enum : uint8_t{
     SCROLL_UP_EVENT,
     SCROLL_DOWN_EVENT,
 }input_event_t; // Input event flags for the input events queue
+
+typedef enum : uint8_t{
+    CLOCK_APP
+}app_t;
 
 QueueHandle_t input_event_queue = xQueueCreate(10, sizeof(input_event_t)); // Queue for input events (used in input isrs and input event task)
 
@@ -249,13 +253,21 @@ void time_keeper_task(void* arg)
     }
 }
 
+void inline call_run_app(void* param)
+{
+    /*FreeRTOS expects a pointer to a function. C++ member functions, however are not pointers to a function
+    and there is no way to convert them to that. Therefore, this function calls the member function itself when freertos calls it.*/
+    
+    static_cast<app*>(param)->run_app();
+}
+
 void write_time_task(void* arg)
 {
     const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
     const char TAG[] = "write_time_task";
     bounding_box_t test_bounding_box {.x_min=0, .x_max=0, .y_min=0, .y_max=0};
     
-    clock_app clock_app(rtc_time, test_bounding_box, display);
+    // clock_app clock_app(rtc_time, test_bounding_box, &display);
 
     /*BUG:
         An extremely bizzare bug!
@@ -267,22 +279,37 @@ void write_time_task(void* arg)
         This, however still doesn't explain why it would happen in the first place...
     */
 
-    ESP_LOGI("write_time_task", "I PREVENT A CRUSH");
+    ESP_LOGE("write_time_task", "I PREVENT A CRUSH");
+    app_t app_to_run = CLOCK_APP;
 
     while (1)
     {
-        clock_app.update_time(rtc_time);
+        // clock_app.update_time(rtc_time);
 
-        if (clock_app.get_update_status())
+        // if (clock_app.get_update_status())
+        // {
+        //     clock_app.run_app();
+        // }
+
+        switch (app_to_run)
         {
-            clock_app.run_app();
+        case CLOCK_APP:
+            {
+                app *app_obj = new clock_app(&rtc_time, test_bounding_box, &display);
+                TaskHandle_t tsk;
+                xTaskCreate(call_run_app, "clock_app", 2048, app_obj, 3, &tsk);
+
+                break;
+            }
+        default:
+            break;
         }
 
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
 
-        vTaskDelay(task_delay_ms); // Delay for 1 second
+        vTaskDelay(portMAX_DELAY); // Delay for 1 second
     }
 }
 
@@ -414,9 +441,10 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
 
     // Display setup
-    display = hagl_init();
-    if (display == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
-    hagl_clear(display);
+    hagl_backend_t* display_pointer = hagl_init();
+    if (display_pointer == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
+    display = *display_pointer;
+    hagl_clear(&display);
 
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
