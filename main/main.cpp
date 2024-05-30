@@ -36,7 +36,7 @@
 
 // #define CHECK_TASK_SIZES
 
-hagl_backend_t display; // Main display 
+hagl_backend_t* display; // Main display 
 
 gptimer_handle_t button_timer; // Timer for button software debounce
 
@@ -55,19 +55,14 @@ typedef enum : uint8_t{
 }input_event_t; // Input event flags for the input events queue
 
 typedef enum : uint8_t{
-    CLOCK_APP,
-    HEART_RATE_APP,
-    NUM_APPS,
-}app_t;
-
-typedef enum : uint8_t{
     MAIN_SCREEN_CLOCK_FACE,
     MAIN_SCREEN_HEART_RATE_FACE,
     NUM_MAIN_SCREEN_FACES,
 }main_screen_faces_t;
 
-QueueHandle_t input_event_queue = xQueueCreate(10, sizeof(input_event_t)); // Queue for input events (used in input isrs and input event task)
+main_screen_faces_t current_face = MAIN_SCREEN_CLOCK_FACE;
 
+QueueHandle_t input_event_queue = xQueueCreate(10, sizeof(input_event_t)); // Queue for input events (used in input isrs and input event task)
 
 static void IRAM_ATTR gpio_button_isr_handler(void* arg)
 {
@@ -245,7 +240,6 @@ void input_events_handler_task(void* arg)
                     led_state = !led_state;
                     gpio_set_level(LED_PIN, led_state);
                     sprintf(event_id, "SHORT_PRESS_EVENT");
-                    
                     break;
                 
                 case LONG_PRESS_EVENT:
@@ -257,10 +251,12 @@ void input_events_handler_task(void* arg)
 
                 case SCROLL_UP_EVENT:
                     sprintf(event_id, "SCROLL_UP_EVENT");
+                    current_face = MAIN_SCREEN_HEART_RATE_FACE;
                     break;
 
                 case SCROLL_DOWN_EVENT:
                     sprintf(event_id, "SCROLL_DOWN_EVENT");
+                    current_face = MAIN_SCREEN_CLOCK_FACE;
                     break;
                 default:
                     break;
@@ -276,50 +272,48 @@ void input_events_handler_task(void* arg)
 
 void app_manager_task(void* arg)
 {
-    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
-    const char TAG[] = "write_time_task";
+    const TickType_t task_delay_ms = 100 / portTICK_PERIOD_MS;
     bounding_box_t test_bounding_box {.x_min=0, .x_max=0, .y_min=0, .y_max=0};
-    
-    // clock_app clock_app(rtc_time, test_bounding_box, &display);
-
-    /*BUG:
-        An extremely bizzare bug!
-        This print statements prevent the program from crushing.
-        The bug seems to be related with the hagl_put_text function inside clock_app.run_app.
-        When removing this line, the esp gets restarted by wdt and then repeatedly crashes.
-        I HAVE NO IDEA WHY THAT HAPPENS!
-        My guess is, that some amount of computation has to happen before calling clock_app.run for it not to crush.
-        This, however still doesn't explain why it would happen in the first place...
-    */
-
-    ESP_LOGE("write_time_task", "I PREVENT A CRUSH");
-    app_t app_to_run = CLOCK_APP;
+    main_screen_faces_t reference_face = NUM_MAIN_SCREEN_FACES;
+    app *app_obj = NULL;
 
     while (1)
     {
-        switch (app_to_run)
+        if (current_face != reference_face)
         {
-        case CLOCK_APP:
+            if (reference_face == NUM_MAIN_SCREEN_FACES){reference_face = MAIN_SCREEN_CLOCK_FACE;}
+
+            switch (current_face)
             {
-                clock_app *clock_app_obj = new clock_app(&rtc_time, test_bounding_box, &display); // Create app instance
-                TaskHandle_t clock_app_task_handle;
-                xTaskCreate(call_run_app, "clock_app", 2048, clock_app_obj, 3, &clock_app_task_handle); // Create task to call run_app
-                clock_app_obj->set_task_handle(clock_app_task_handle); // Assign the app its task handle (for later deletion)
-                ESP_LOGW("app", "created");
-                vTaskDelay(5000 / portTICK_PERIOD_MS);
-                delete clock_app_obj;
-                ESP_LOGW("app", "deleted");
+            case MAIN_SCREEN_CLOCK_FACE:
+                {
+                    if (app_obj != NULL)
+                    {
+                        ESP_LOGI("DELETED","");
+                        delete app_obj;
+                    }
+                    app_obj = new clock_app(&rtc_time, test_bounding_box, display);
+                    break;
+                }
+            case MAIN_SCREEN_HEART_RATE_FACE:
+            {
+                if (app_obj != NULL)
+                {
+                    ESP_LOGI("DELETED","");
+                    delete app_obj;
+                }
+                app_obj = new test_app(display);
                 break;
             }
-        default:
-            break;
+            default:
+                break;
+            }
+            reference_face = current_face;
         }
-
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
-
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(task_delay_ms);
     }
 }
 
@@ -453,8 +447,8 @@ extern "C" void app_main(void)
     // Display setup
     hagl_backend_t* display_pointer = hagl_init();
     if (display_pointer == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
-    display = *display_pointer;
-    hagl_clear(&display);
+    display = display_pointer;
+    hagl_clear(display);
 
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce

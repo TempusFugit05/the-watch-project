@@ -23,11 +23,15 @@ typedef struct
 
 class app
 {    
+protected:
+    hagl_backend_t* display_handle;
+    TaskHandle_t task_handle;
+
 public:
-    app();
-    virtual ~app();
-    virtual bool get_update_status();
-    virtual void run_app();
+    app(hagl_backend_t* display);
+    virtual ~app() = 0;
+    virtual bool get_update_status() = 0;
+    virtual void run_app() = 0;
 };
 
 class clock_app : public app
@@ -36,8 +40,6 @@ class clock_app : public app
     tm reference_time; // Older time to compare against
     tm* current_time; // Newest time available
     bounding_box_t bounding_box; 
-    hagl_backend_t* display_handle;
-    TaskHandle_t task_handle;
 
     char time_str [64]; // String buffer
     wchar_t formatted_str [64]; // String buffer compatable with the display library
@@ -49,9 +51,6 @@ class clock_app : public app
     clock_app(tm* time, bounding_box_t bounding_box, hagl_backend_t* app_display);
     ~clock_app();
 
-    TaskHandle_t set_task_handle(const TaskHandle_t app_task_handle);
-    TaskHandle_t get_task_handle();
-
     bool get_update_status() override;
     void run_app () override;
 
@@ -59,19 +58,12 @@ class clock_app : public app
 
 class test_app : public app
 {
-    private:
-        hagl_backend_t* display_handle;
-        TaskHandle_t task_handle;
-
     public:
         test_app(hagl_backend_t* app_display);
-        ~test_app();
+        ~test_app() override;
 
-        bool get_update_status();
-        void run_app ();
-        
-        TaskHandle_t set_task_handle(const TaskHandle_t app_task_handle);
-        TaskHandle_t get_task_handle();
+        bool get_update_status() override;
+        void run_app () override;
 };
 
 #ifdef __cplusplus
