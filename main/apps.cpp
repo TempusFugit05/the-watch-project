@@ -1,9 +1,10 @@
-#include "apps.h"
+#include "widgets.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "font5x7.h"
 #include "fonts.h"
 
 #include "hagl_hal.h"
@@ -13,194 +14,233 @@
 #include <cstring>
 #include <ctime>
 
+#define SCREEN_SIZE_X 240
+#define SCREEN_SIZE_Y 240
+
 // #define CHECK_TASK_SIZES
 
 /*
-Apps:
+Widgets:
 Typical smart watches have faces/screens that show different sets of data/settings/etc and the user can switch between them.
 My idea for an implimentation of such thing is having a template class from which all these screens will be derived
 and will implement their own logic as well as their own functions to draw data/gui on the screen.
 
 Guidelines:
-1.  The app class should have a few basic functions:
-    1.  Draw on screen - All the ui of the app should be handled by a function that draws the ui elements
-    2.  Get data - Get all the data necessary for the app to work correctly
-    3.  Check update conditions - A function to to check if the arguments needed by the app have changed from
+1.  The widget class should have a few basic functions:
+    1.  Draw on screen - All the ui of the widget should be handled by a function that draws the ui elements
+    2.  Get data - Get all the data necessary for the widget to work correctly
+    3.  Check update conditions - A function to to check if the arguments needed by the widget have changed from
         the previous iteration. This is done to decide if the draw on screen function needs to be called.
         (Less unecessary updating -> more optimized)
 
-2.  Every app must have a few attributes:
-        1.  Data required by the app to function (e.g, heart rate for a heart rate monitor app).
+2.  Every widget must have a few attributes:
+        1.  Data required by the widget to function (e.g, heart rate for a heart rate monitor widget).
         2.  Reference of said data to check if the the gui needs to be updated.
         May be useful(?):    
-        3.  Allocated area on screen - The bounding box of the app to be displayed in (might be useful for things like
+        3.  Allocated area on screen - The bounding box of the widget to be displayed in (might be useful for things like
             widgets (e.g, a bar on top to show the battery precentage and time))
-        4.  Draw priority - When a few apps are running simultaneously, which ones should be drawn on top of which? 
+        4.  Draw priority - When a few widgets are running simultaneously, which ones should be drawn on top of which? 
 
-3.  Apps should be as modular and flexible as possible. I'm hoping that my idea will serve as a solid template
+3.  Widgets should be as modular and flexible as possible. I'm hoping that my idea will serve as a solid template
     for anything from simple information displays, settings menus, widgets to a freaking game of Snake.
 */
 
-extern "C" app::app(hagl_backend_t* display) : display_handle(display){};
-extern "C" app::~app(){}
-extern "C" void app::run_app(){}
-extern "C" bool app::get_update_status(){return true;}
+extern "C" widget::widget(hagl_backend_t* display, SemaphoreHandle_t  mutex) : display_handle(display), mutex(mutex){};
+extern "C" widget::~widget(){}
+extern "C" void widget::run_widget(){}
 
-void inline call_run_app(void* app_obj)
+void inline call_run_widget(void* widget_obj)
 {
     /*FreeRTOS expects a pointer to a function. C++ member functions, however are not pointers to a function
     and there is no way to convert them to that. Therefore, this function calls the member function itself when freertos calls it.*/
-    static_cast<app*>(app_obj)->run_app();
+    static_cast<widget*>(widget_obj)->run_widget();
 }
 
 
-extern "C" clock_app::clock_app(tm* time, hagl_backend_t* app_display)
-: app(app_display), reference_time(*time), current_time(time)
+extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  mutex, tm* time)
+: widget(widget_display, mutex), reference_time(*time), current_time(time)
 {
-    xTaskCreate(call_run_app, "clock_app", 10000, this, 3, &task_handle); // Create task to call run_app
+    xTaskCreate(call_run_widget, "clock_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
-extern "C" clock_app::~clock_app()
+extern "C" clock_widget::~clock_widget()
 {
-    hagl_clear(display_handle);
-    vTaskDelete(task_handle);
-}
-
-extern "C" void clock_app::month_to_str(int month, char* buffer)
-{
-    /*This function converts a month index intop a string and writes it to a buffer
-    (Assuming month range is 1-12)*/
-    const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};    
-    strcpy(buffer, months_of_year[month-1]); // Copy the month string into the buffer
-}
-
-extern "C" void clock_app::weekday_to_str(int weekday, char* buffer)
-{
-    /*Convert weekday into string and writes it into a buffer
-    (Assuming weekday range is 1-7)*/
-    const char* days_of_week[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    strcpy(buffer, days_of_week[weekday-1]); // Copy the day of week string into the buffer
-}
-
-extern "C" bool clock_app::get_update_status()
-{   
-    /*Update the internal reference and current times and return true if they were updated*/
-
-    // mktime assumes tm_year is years since 1900.
-    // It will also automatically calculate the weekday and override the original value.
-    // Therefore tm needs to be modified before passing it
-    reference_time.tm_year -= 1900;
-    tm current_time_struct = *current_time;
-    current_time_struct.tm_year -= 1900;
-
-    if (difftime(mktime(&reference_time), mktime(&current_time_struct)) < 0) 
+    if (xSemaphoreTake(mutex, pdMS_TO_TICKS(10)))
     {
-        reference_time.tm_year += 1900;
-        current_time_struct.tm_year += 1900;
-        reference_time = current_time_struct;
-        return true;
-    } // Check if the time got iterated since last run and update accordingly
-    reference_time.tm_year += 1900;
-    current_time_struct.tm_year += 1900;
-    return false; // Return false if time was not iterated
+        vTaskDelete(task_handle);
+        hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
+        hagl_fill_rectangle_xyxy(display_handle, 0, 20, SCREEN_SIZE_X, SCREEN_SIZE_Y, hagl_color(display_handle,0,0,0)); // Clear screen
+        xSemaphoreGive(mutex);
+    } // Clear screen
 }
 
-extern "C" void clock_app::run_app ()
+extern "C" void clock_widget::month_to_str(int month, char* buffer)
 {
-    static const TickType_t task_delay_ms = pdMS_TO_TICKS(1000);
+    /*This function converts a month index intop a string and writes it to a buffer*/
+    static const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};    
+    strcpy(buffer, months_of_year[month]); // Copy the month string into the buffer
+}
+
+extern "C" void clock_widget::weekday_to_str(int weekday, char* buffer)
+{
+    /*Convert weekday into string and writes it into a buffer*/
+    static const char* days_of_week[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    strcpy(buffer, days_of_week[weekday]); // Copy the day of week string into the buffer
+}
+
+extern "C" void clock_widget::run_widget ()
+{
     static const hagl_color_t color = hagl_color(display_handle, 255, 100, 255); // Placeholder color (Note: the r and b channels are inverted on my display)
     
     while (1)
     {
-        tm current_time_struct = *current_time;
-
-        /*Display hours*/
-        if (current_time_struct.tm_hour != reference_time.tm_hour || first_run)
+        if (xSemaphoreTake(mutex, portMAX_DELAY))
         {
-            snprintf(time_str, 64, "%02i", current_time_struct.tm_hour);
-            hours_text_cords_y = 20;
+        
+            hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
+            tm current_time_struct = *current_time;
+
+            /*Display hours*/
+            if (current_time_struct.tm_hour != reference_time.tm_hour || first_run)
+            {
+                snprintf(time_str, 64, "%02i", current_time_struct.tm_hour);
+                hours_text_cords_y = 20;
+                mbstowcs(formatted_str, time_str, 64);
+                hours_text_cords_y = segment_font.size_y;
+                hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, hours_text_cords_y, color, segment_font.font);
+            }
+            /*Display minutes*/
+            if (current_time_struct.tm_min != reference_time.tm_min || first_run)
+            {
+                snprintf(time_str, 64, "%02i", current_time_struct.tm_min);
+                mbstowcs(formatted_str, time_str, 64);
+                minutes_text_cords_y = hours_text_cords_y + 5 + segment_font.size_y;
+                hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, minutes_text_cords_y, color, segment_font.font); // Display string
+            }
+            
+            /*Display seconds*/
+            snprintf(time_str, 64, "%02i", current_time_struct.tm_sec);
             mbstowcs(formatted_str, time_str, 64);
-            hours_text_cords_y = segment_font.size_y;
-            hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, hours_text_cords_y, color, segment_font.font);
-        }
+            seconds_text_cords_y = minutes_text_cords_y + 5 + segment_font.size_y;
+            hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, seconds_text_cords_y, color, segment_font.font); // Display string
+            
+            /*Display month day, month name and year*/
+            if (current_time_struct.tm_mday != reference_time.tm_mday || first_run)
+            {
+                current_time_struct.tm_year += 1900;
+                month_to_str(current_time_struct.tm_mon, month_str);
+                snprintf(time_str, 64, "%02i %s %04i", 
+                current_time_struct.tm_mday, month_str, current_time_struct.tm_year);
+                mbstowcs(formatted_str, time_str, 64);
+                months_text_cords_y = seconds_text_cords_y + 5 + segment_font.size_y;
+                hagl_put_text(display_handle, formatted_str, SCREEN_SIZE_X/2 - strlen(time_str)*4, months_text_cords_y, color, font10x20.font); // Display string
+            }
 
-        /*Display minutes*/
-        if (current_time_struct.tm_min != reference_time.tm_min || first_run)
-        {
-            snprintf(time_str, 64, "%02i", current_time_struct.tm_min);
-            mbstowcs(formatted_str, time_str, 64);
-            minutes_text_cords_y = hours_text_cords_y + 5 + segment_font.size_y;
-            hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, minutes_text_cords_y, color, segment_font.font); // Display string
+            /*Display weekday*/
+            if (current_time_struct.tm_wday != reference_time.tm_wday || first_run)
+            {
+                weekday_to_str(current_time_struct.tm_wday, weekday_str);
+                mbstowcs(formatted_weekday, weekday_str, 10);
+                weekday_text_cords_y = months_text_cords_y + 5 + font10x20.size_y;
+                hagl_put_text(display_handle, formatted_weekday, SCREEN_SIZE_X/2 - strlen(weekday_str)*4, weekday_text_cords_y, color, font10x20.font); // Display string
+            }
+            
+            reference_time = current_time_struct;
+            if (first_run)
+            {
+                first_run = false;
+            }
+            xSemaphoreGive(mutex);
+        #ifdef CHECK_TASK_SIZES
+            ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
+        vTaskDelay(pdMS_TO_TICKS(1000));
         }
-        
-        /*Display seconds*/
-        snprintf(time_str, 64, "%02i", current_time_struct.tm_sec);
-        mbstowcs(formatted_str, time_str, 64);
-        seconds_text_cords_y = minutes_text_cords_y + 5 + segment_font.size_y;
-        hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, seconds_text_cords_y, color, segment_font.font); // Display string
-        
-        /*Display month day, month name and year*/
-        if (current_time_struct.tm_mday != reference_time.tm_mday || first_run)
-        {
-            month_to_str(current_time_struct.tm_mon, month);
-            snprintf(time_str, 64, "%02i %s %04i", 
-            current_time_struct.tm_mday, month, current_time_struct.tm_year);
-            mbstowcs(formatted_str, time_str, 64);
-            months_text_cords_y = seconds_text_cords_y + 5 + segment_font.size_y;
-            hagl_put_text(display_handle, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, months_text_cords_y, color, font10x20.font); // Display string
-        }
-
-        /*Display weekday*/
-        if (current_time_struct.tm_wday != reference_time.tm_wday || first_run)
-        {
-            weekday_to_str(current_time_struct.tm_wday, weekday);
-            wchar_t formatted_weekday[10];
-            mbstowcs(formatted_weekday, weekday, 10);
-            weekday_text_cords_y = months_text_cords_y + 5 + font10x20.size_y;
-            hagl_put_text(display_handle, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, weekday_text_cords_y, color, font10x20.font); // Display string
-        }
-        
-        reference_time = current_time_struct;
-        if (first_run)
-        {
-            first_run = false;
-        }
-        
-    #ifdef CHECK_TASK_SIZES
-        ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
-    #endif
-    vTaskDelay(task_delay_ms);
-
     }
 }
 
-/*test_app for testing!*/
+/*info_bar_widget to display time and other info if*/
 
-extern "C" test_app::test_app(hagl_backend_t* app_display) : app(app_display)
+extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, tm* time) : widget(display, mutex), reference_time(*time), current_time(time)
 {
-    xTaskCreate(call_run_app, "test_app", 10000, this, 3, &task_handle); // Create task to call run_app
+    xTaskCreate(call_run_widget, "info_bar", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
-extern "C" test_app::~test_app()
+extern "C" info_bar_widget::~info_bar_widget()
 {
-    hagl_clear(display_handle);
-    vTaskDelete(task_handle);
+    if (xSemaphoreTake(mutex, portMAX_DELAY))
+    {
+        hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
+        vTaskDelete(task_handle);
+        hagl_fill_rectangle_xyxy(display_handle, 0, 0, SCREEN_SIZE_X, 20, hagl_color(display_handle,0,0,0)); // Clear screen
+        xSemaphoreGive(mutex);
+    } // Clear screen
 }
 
-extern "C" bool test_app::get_update_status()
+extern "C" void info_bar_widget::run_widget()
 {
-    return true;
-}
+    static const hagl_color_t color = hagl_color(display_handle, 255, 255, 255);
 
-extern "C" void test_app::run_app()
-{
-    static const TickType_t delay = 250 / portTICK_PERIOD_MS;
-    // static const hagl_color_t color = hagl_color(display_handle, 255, 255, 255);
-    int radius = 1;
     while (1)
     {
-        hagl_draw_circle(display_handle, DISPLAY_WIDTH/2, DISPLAY_HEIGHT/2, radius, (hagl_color_t)16379);
-        radius += 1;
-        vTaskDelay(delay);
+        if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)))
+        {
+            hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
+            tm current_time_struct = *current_time;
+
+            if (reference_time.tm_sec != current_time_struct.tm_sec || first_run)
+            {
+                snprintf(time_str, 32, "%02i:%02i:%02i",
+                        current_time_struct.tm_hour, current_time_struct.tm_min, current_time_struct.tm_sec);
+                mbstowcs(formatted_time_str, time_str, 32);
+                hagl_put_text(display_handle, formatted_time_str, (SCREEN_SIZE_X-strlen(time_str)*5)/2, 5, color, font5x7);
+            }
+            xSemaphoreGive(mutex);
+
+            #ifdef CHECK_TASK_SIZES
+                ESP_LOGI("info_bar_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+            #endif
+            
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+    
+}
+
+/*test_widget for testing!*/
+
+extern "C" test_widget::test_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  mutex) : widget(widget_display, mutex)
+{
+    xTaskCreate(call_run_widget, "test_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
+}
+
+extern "C" test_widget::~test_widget()
+{
+    if (xSemaphoreTake(mutex, portMAX_DELAY))
+    {
+        vTaskDelete(task_handle);
+        hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
+        hagl_fill_rectangle_xyxy(display_handle, 0, 20, SCREEN_SIZE_X, SCREEN_SIZE_Y, hagl_color(display_handle,0,0,0)); // Clear screen
+        xSemaphoreGive(mutex);
+    } // Clear screen
+}
+extern "C" void test_widget::run_widget()
+{
+    static const hagl_color_t color = hagl_color(display_handle, 255, 255, 255);
+    int radius = 0;
+    while (1)
+    {
+        if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)))
+        {
+            hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
+            hagl_draw_circle(display_handle, SCREEN_SIZE_X/2, SCREEN_SIZE_Y/2, radius, color);
+            radius += 1;
+
+        #ifdef CHECK_TASK_SIZES
+        ESP_LOGI("test_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
+            xSemaphoreGive(mutex);
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
     }
 }

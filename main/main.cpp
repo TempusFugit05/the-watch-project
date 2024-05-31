@@ -13,7 +13,7 @@
 #include "hagl_hal.h"
 #include "hagl.h"
 #include "string.h"
-#include "apps.h"
+#include "widgets.h"
 
 #include "ds3231.h"
 
@@ -31,12 +31,10 @@
 #define BUTTON_DEBOUNCE_COOLDOWN    10000
 #define BUTTON_LONG_PRESS_COOLDOWN  500000
 
-#define SCEEN_SIZE_X 240
-#define SCEEN_SIZE_Y 240
-
 // #define CHECK_TASK_SIZES
 
 hagl_backend_t* display; // Main display 
+SemaphoreHandle_t display_mutex = xSemaphoreCreateMutex(); // Mutex to ensure two tasks aren't writing at the same time
 
 gptimer_handle_t button_timer; // Timer for button software debounce
 
@@ -51,14 +49,13 @@ typedef enum : uint8_t{
     LONG_PRESS_EVENT,
     SCROLL_UP_EVENT,
     SCROLL_DOWN_EVENT,
-    NUM_EVENTS
 }input_event_t; // Input event flags for the input events queue
 
 typedef enum : uint8_t{
-    MIN_SCREEN_FACE,
-    MAIN_SCREEN_CLOCK_FACE,
-    MAIN_SCREEN_HEART_RATE_FACE,
-    NUM_MAIN_SCREEN_FACES,
+    SCREEN_FACES_PADDING_LOWER,
+    SCREEN_CLOCK_FACE,
+    SCREEN_HEART_RATE_FACE,
+    SCREEN_FACES_PADDING_UPPER,
 }main_screen_faces_t;
 
 QueueHandle_t input_event_queue = xQueueCreate(10, sizeof(input_event_t)); // Queue for input events (used in input isrs and input event task)
@@ -218,26 +215,28 @@ void main_screen_state_machine(input_event_t event)
     unsigned long current_time = xTaskGetTickCount();
     static unsigned long time_since_last_update = 0;
 
-    static main_screen_faces_t current_face = MIN_SCREEN_FACE;
-    static app *app_obj = NULL;
+    static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
+    static widget *widget_obj = NULL;
     
+    static info_bar_widget *info_bar = new info_bar_widget(display, display_mutex, &rtc_time);
+
     if (current_time - time_since_last_update >= face_switch_delay_ms)
     {
         switch (event)
         {
         case SCROLL_UP_EVENT:
             current_face = static_cast <main_screen_faces_t>(current_face + static_cast <main_screen_faces_t>(1));
-            if (current_face >= NUM_MAIN_SCREEN_FACES)
+            if (current_face >= SCREEN_FACES_PADDING_UPPER)
             {
-                current_face = static_cast<main_screen_faces_t>(MIN_SCREEN_FACE + 1);
+                current_face = static_cast<main_screen_faces_t>(SCREEN_FACES_PADDING_LOWER + 1);
             }
             break;
         
         case SCROLL_DOWN_EVENT:
             current_face = static_cast <main_screen_faces_t>(current_face - static_cast <main_screen_faces_t>(1));
-            if (current_face <= MIN_SCREEN_FACE)
+            if (current_face <= SCREEN_FACES_PADDING_LOWER)
             {
-                current_face = static_cast<main_screen_faces_t>(NUM_MAIN_SCREEN_FACES - 1);
+                current_face = static_cast<main_screen_faces_t>(SCREEN_FACES_PADDING_UPPER - 1);
             }
 
         default:
@@ -248,23 +247,25 @@ void main_screen_state_machine(input_event_t event)
         {
             switch (current_face)
             {
-                case MAIN_SCREEN_CLOCK_FACE:
+                case SCREEN_CLOCK_FACE:
                     {
-                        if (app_obj != NULL)
+                        if (widget_obj != NULL)
                         {
-                            delete app_obj;
+                            delete widget_obj;
                         }
-                        app_obj = new clock_app(&rtc_time, display);
+                        widget_obj = new clock_widget(display, display_mutex, &rtc_time);
+                        delete info_bar;
                         break;
                     }
 
-                case MAIN_SCREEN_HEART_RATE_FACE:
+                case SCREEN_HEART_RATE_FACE:
                 {
-                    if (app_obj != NULL)
+                    if (widget_obj != NULL)
                     {
-                        delete app_obj;
+                        delete widget_obj;
                     }
-                    app_obj = new test_app(display);
+                    widget_obj = new test_widget(display, display_mutex);
+                    info_bar = new info_bar_widget(display, display_mutex, &rtc_time);
                     break;
                 }
                 default:
