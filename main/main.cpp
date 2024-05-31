@@ -18,7 +18,7 @@
 #include "ds3231.h"
 
 #define LED_PIN             GPIO_NUM_2
-#define GPIO_VIBRATOR_PIN   GPIO_NUM_25
+#define LED_PIN2   GPIO_NUM_25
 
 #define GPIO_BUTTON_PIN     GPIO_NUM_34
 #define ENCODER_CLK_PIN     GPIO_NUM_39
@@ -55,12 +55,11 @@ typedef enum : uint8_t{
 }input_event_t; // Input event flags for the input events queue
 
 typedef enum : uint8_t{
+    MIN_SCREEN_FACE,
     MAIN_SCREEN_CLOCK_FACE,
     MAIN_SCREEN_HEART_RATE_FACE,
     NUM_MAIN_SCREEN_FACES,
 }main_screen_faces_t;
-
-main_screen_faces_t current_face = MAIN_SCREEN_CLOCK_FACE;
 
 QueueHandle_t input_event_queue = xQueueCreate(10, sizeof(input_event_t)); // Queue for input events (used in input isrs and input event task)
 
@@ -178,7 +177,7 @@ void time_keeper_task(void* arg)
     // BUG: When disconnecting the ds3231 from power, the program crashes...
     // (Possibly a hardware problem?)
     // Follow up: Turns out this only happens when disconnecting the scl or power pins...
-    const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
+    const TickType_t task_delay_ms = pdMS_TO_TICKS(1000);
     static char TAG[] = "get_time_task";
     static bool manual_time_keeping = false; // Flag to determin if the function should switch to manual time counting
 
@@ -213,12 +212,67 @@ void time_keeper_task(void* arg)
     }
 }
 
-void inline call_run_app(void* param)
-{
-    /*FreeRTOS expects a pointer to a function. C++ member functions, however are not pointers to a function
-    and there is no way to convert them to that. Therefore, this function calls the member function itself when freertos calls it.*/
+void main_screen_state_machine(input_event_t event)
+{    
+    static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(100);
+    unsigned long current_time = xTaskGetTickCount();
+    static unsigned long time_since_last_update = 0;
+
+    static main_screen_faces_t current_face = MIN_SCREEN_FACE;
+    static app *app_obj = NULL;
     
-    static_cast<app*>(param)->run_app();
+    if (current_time - time_since_last_update >= face_switch_delay_ms)
+    {
+        switch (event)
+        {
+        case SCROLL_UP_EVENT:
+            current_face = static_cast <main_screen_faces_t>(current_face + static_cast <main_screen_faces_t>(1));
+            if (current_face >= NUM_MAIN_SCREEN_FACES)
+            {
+                current_face = static_cast<main_screen_faces_t>(MIN_SCREEN_FACE + 1);
+            }
+            break;
+        
+        case SCROLL_DOWN_EVENT:
+            current_face = static_cast <main_screen_faces_t>(current_face - static_cast <main_screen_faces_t>(1));
+            if (current_face <= MIN_SCREEN_FACE)
+            {
+                current_face = static_cast<main_screen_faces_t>(NUM_MAIN_SCREEN_FACES - 1);
+            }
+
+        default:
+            break;
+        }
+
+        if (event == SCROLL_UP_EVENT || event == SCROLL_DOWN_EVENT)
+        {
+            switch (current_face)
+            {
+                case MAIN_SCREEN_CLOCK_FACE:
+                    {
+                        if (app_obj != NULL)
+                        {
+                            delete app_obj;
+                        }
+                        app_obj = new clock_app(&rtc_time, display);
+                        break;
+                    }
+
+                case MAIN_SCREEN_HEART_RATE_FACE:
+                {
+                    if (app_obj != NULL)
+                    {
+                        delete app_obj;
+                    }
+                    app_obj = new test_app(display);
+                    break;
+                }
+                default:
+                    break;
+            }
+            time_since_last_update = current_time;
+        }
+    }
 }
 
 void input_events_handler_task(void* arg)
@@ -229,10 +283,10 @@ void input_events_handler_task(void* arg)
     input_event_t event; // Event type
     char event_id[32];
     const char TAG[] = "input_events_handler_task";
+
     while(1){
         if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
         {
-        
             switch (event)
             {
                 case SHORT_PRESS_EVENT:
@@ -243,77 +297,31 @@ void input_events_handler_task(void* arg)
                     break;
                 
                 case LONG_PRESS_EVENT:
-                    static bool vibrator_state = false;
-                    vibrator_state = !vibrator_state;
-                    gpio_set_level(GPIO_VIBRATOR_PIN, vibrator_state);
+                    static bool led2_state = false;
+                    led2_state = !led2_state;
+                    gpio_set_level(LED_PIN2, led2_state);
                     sprintf(event_id, "LONG_PRESS_EVENT");
                     break;
 
                 case SCROLL_UP_EVENT:
                     sprintf(event_id, "SCROLL_UP_EVENT");
-                    current_face = MAIN_SCREEN_HEART_RATE_FACE;
                     break;
 
                 case SCROLL_DOWN_EVENT:
                     sprintf(event_id, "SCROLL_DOWN_EVENT");
-                    current_face = MAIN_SCREEN_CLOCK_FACE;
                     break;
+                    
                 default:
                     break;
             }
+
+        main_screen_state_machine(event);
+        }
         ESP_LOGI("input_event", "%s", event_id);
+        #ifdef CHECK_TASK_SIZES
+            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
         
-        #ifdef CHECK_TASK_SIZES
-            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
-        #endif
-        }
-    }
-}
-
-void app_manager_task(void* arg)
-{
-    const TickType_t task_delay_ms = 100 / portTICK_PERIOD_MS;
-    bounding_box_t test_bounding_box {.x_min=0, .x_max=0, .y_min=0, .y_max=0};
-    main_screen_faces_t reference_face = NUM_MAIN_SCREEN_FACES;
-    app *app_obj = NULL;
-
-    while (1)
-    {
-        if (current_face != reference_face)
-        {
-            if (reference_face == NUM_MAIN_SCREEN_FACES){reference_face = MAIN_SCREEN_CLOCK_FACE;}
-
-            switch (current_face)
-            {
-            case MAIN_SCREEN_CLOCK_FACE:
-                {
-                    if (app_obj != NULL)
-                    {
-                        ESP_LOGI("DELETED","");
-                        delete app_obj;
-                    }
-                    app_obj = new clock_app(&rtc_time, test_bounding_box, display);
-                    break;
-                }
-            case MAIN_SCREEN_HEART_RATE_FACE:
-            {
-                if (app_obj != NULL)
-                {
-                    ESP_LOGI("DELETED","");
-                    delete app_obj;
-                }
-                app_obj = new test_app(display);
-                break;
-            }
-            default:
-                break;
-            }
-            reference_face = current_face;
-        }
-        #ifdef CHECK_TASK_SIZES
-            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
-        #endif
-        vTaskDelay(task_delay_ms);
     }
 }
 
@@ -362,7 +370,7 @@ void setup_gpio()
     // LED setup
     gpio_config_t led_io_conf =
     {
-        .pin_bit_mask = (1ULL << LED_PIN | 1ULL << GPIO_VIBRATOR_PIN), // Bitmask to select the GPIO pins
+        .pin_bit_mask = (1ULL << LED_PIN | 1ULL << LED_PIN2), // Bitmask to select the GPIO pins
         .mode = GPIO_MODE_OUTPUT, // Set as output mode
         .pull_up_en = GPIO_PULLUP_DISABLE, // Disable pull-up resistor
         .pull_down_en = GPIO_PULLDOWN_DISABLE, // Disable pull-down resistor
@@ -450,10 +458,12 @@ extern "C" void app_main(void)
     display = display_pointer;
     hagl_clear(display);
 
+    main_screen_state_machine(SCROLL_UP_EVENT);
+
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isrs(); // Set up input interrupts
-    
+
     // Time-keeping task
     TaskHandle_t time_keeper_task_handle;
     xTaskCreatePinnedToCore(time_keeper_task, "time_keeper", 2048, NULL, 5, &time_keeper_task_handle, 0);
@@ -461,8 +471,4 @@ extern "C" void app_main(void)
     // Task to handle the various input interrupt signals
     TaskHandle_t input_events_handler_task_handle;
     xTaskCreatePinnedToCore(input_events_handler_task, "input_events_handler_task", 2048, NULL, 5, &input_events_handler_task_handle, 0);
-
-    // Writes time to display
-    TaskHandle_t write_time_task_handle;
-    xTaskCreate(app_manager_task, "app_manager_task", 4096, NULL, 3, &write_time_task_handle); // TODO replace with actrual ui system
 }

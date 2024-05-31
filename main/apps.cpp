@@ -4,8 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "fonts/font10x20.h"
-#include "fonts/test_font.h"
+#include "fonts.h"
 
 #include "hagl_hal.h"
 #include "hagl.h"
@@ -51,13 +50,12 @@ void inline call_run_app(void* app_obj)
 {
     /*FreeRTOS expects a pointer to a function. C++ member functions, however are not pointers to a function
     and there is no way to convert them to that. Therefore, this function calls the member function itself when freertos calls it.*/
-    
     static_cast<app*>(app_obj)->run_app();
 }
 
 
-extern "C" clock_app::clock_app(tm* time, bounding_box_t bounding_box_config, hagl_backend_t* app_display)
-: app(app_display), reference_time(*time), current_time(time), bounding_box(bounding_box_config)
+extern "C" clock_app::clock_app(tm* time, hagl_backend_t* app_display)
+: app(app_display), reference_time(*time), current_time(time)
 {
     xTaskCreate(call_run_app, "clock_app", 10000, this, 3, &task_handle); // Create task to call run_app
 }
@@ -109,43 +107,65 @@ extern "C" bool clock_app::get_update_status()
 
 extern "C" void clock_app::run_app ()
 {
-    static const TickType_t task_delay_ms = 1000 / portTICK_PERIOD_MS;
+    static const TickType_t task_delay_ms = pdMS_TO_TICKS(1000);
     static const hagl_color_t color = hagl_color(display_handle, 255, 100, 255); // Placeholder color (Note: the r and b channels are inverted on my display)
+    
     while (1)
     {
         tm current_time_struct = *current_time;
 
-        snprintf(time_str, 64, "%02i", current_time_struct.tm_hour);
-        int text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
-        int text_cords_y = 20 + segment_font.size_y;
-        mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(display_handle, formatted_str, text_cords_x, 40, color, test_font); // Display string
+        /*Display hours*/
+        if (current_time_struct.tm_hour != reference_time.tm_hour || first_run)
+        {
+            snprintf(time_str, 64, "%02i", current_time_struct.tm_hour);
+            hours_text_cords_y = 20;
+            mbstowcs(formatted_str, time_str, 64);
+            hours_text_cords_y = segment_font.size_y;
+            hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, hours_text_cords_y, color, segment_font.font);
+        }
 
-        snprintf(time_str, 64, "%02i", current_time_struct.tm_min);
-        text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
-        text_cords_y += segment_font.size_y + 10;
-        mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(display_handle, formatted_str, text_cords_x, 85, color, test_font); // Display string
-
-        snprintf(time_str, 64, "%02i", current_time_struct.tm_sec);
-        text_cords_x = (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2;
-        text_cords_y += segment_font.size_y + 10;
-        mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(display_handle, formatted_str, text_cords_x, 130, color, test_font); // Display string
+        /*Display minutes*/
+        if (current_time_struct.tm_min != reference_time.tm_min || first_run)
+        {
+            snprintf(time_str, 64, "%02i", current_time_struct.tm_min);
+            mbstowcs(formatted_str, time_str, 64);
+            minutes_text_cords_y = hours_text_cords_y + 5 + segment_font.size_y;
+            hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, minutes_text_cords_y, color, segment_font.font); // Display string
+        }
         
-        char month[10]; // Buffer to store the month's name
-        month_to_str(current_time_struct.tm_mon, month);
-        snprintf(time_str, 64, "%02i %s %04i", 
-        current_time_struct.tm_mday, month, current_time_struct.tm_year);
+        /*Display seconds*/
+        snprintf(time_str, 64, "%02i", current_time_struct.tm_sec);
         mbstowcs(formatted_str, time_str, 64);
-        hagl_put_text(display_handle, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, 200, color, font10x20); // Display string
+        seconds_text_cords_y = minutes_text_cords_y + 5 + segment_font.size_y;
+        hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, seconds_text_cords_y, color, segment_font.font); // Display string
+        
+        /*Display month day, month name and year*/
+        if (current_time_struct.tm_mday != reference_time.tm_mday || first_run)
+        {
+            month_to_str(current_time_struct.tm_mon, month);
+            snprintf(time_str, 64, "%02i %s %04i", 
+            current_time_struct.tm_mday, month, current_time_struct.tm_year);
+            mbstowcs(formatted_str, time_str, 64);
+            months_text_cords_y = seconds_text_cords_y + 5 + segment_font.size_y;
+            hagl_put_text(display_handle, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, months_text_cords_y, color, font10x20.font); // Display string
+        }
 
-        char weekday[10];
-        weekday_to_str(current_time_struct.tm_wday, weekday);
-        wchar_t formatted_weekday[10];
-        mbstowcs(formatted_weekday, weekday, 10);
-        hagl_put_text(display_handle, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, 220, color, font10x20); // Display string
- 
+        /*Display weekday*/
+        if (current_time_struct.tm_wday != reference_time.tm_wday || first_run)
+        {
+            weekday_to_str(current_time_struct.tm_wday, weekday);
+            wchar_t formatted_weekday[10];
+            mbstowcs(formatted_weekday, weekday, 10);
+            weekday_text_cords_y = months_text_cords_y + 5 + font10x20.size_y;
+            hagl_put_text(display_handle, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday)*4, weekday_text_cords_y, color, font10x20.font); // Display string
+        }
+        
+        reference_time = current_time_struct;
+        if (first_run)
+        {
+            first_run = false;
+        }
+        
     #ifdef CHECK_TASK_SIZES
         ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
     #endif
