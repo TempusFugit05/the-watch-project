@@ -183,6 +183,7 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
     reference_time.tm_yday = time_struct->tm_yday;
 
     *time_struct = reference_time; // Override the original time struct
+
     return ESP_OK;
 }
 
@@ -203,7 +204,6 @@ int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, struct tm time_struct)
 
     if (validate_time(ds3231_handle, &time_struct) == ESP_OK)
     {
-
         mktime(&time_struct); // Calculate day of week
         i2c_master_dev_handle_t dev_handle = ds3231_handle->dev_handle;
 
@@ -249,7 +249,7 @@ int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, struct tm time_struct)
 int str_to_month(const char* month)
 {
     /*Convert a month string into a corresponding number*/
-    const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+    const char* months_of_year[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
     
     for (int i = 0; i < 12; i++)
     {
@@ -269,7 +269,7 @@ int ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, i2c_master_bu
     (Useful for testing or setting the initial time for the module)*/
     char TAG[] = "ds3231";
 
-    struct tm compile_time;
+    struct tm compile_time={.tm_wday=0};
     
     char date_buff[] = __DATE__; // Date during compilation
     char time_buff[] = __TIME__; // Time during compilation
@@ -280,7 +280,12 @@ int ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, i2c_master_bu
     
     sscanf(date_buff, "%s %d %d", month, &compile_time.tm_mday, &compile_time.tm_year); // Extract month to buffer and day and year as intagers
     compile_time.tm_mon = str_to_month(month); // Convert month string to numerical value
+
+    // ESP_LOGI("", "%i %i %i %i %i %i %i", compile_time.tm_sec, compile_time.tm_min,
+    // compile_time.tm_hour, compile_time.tm_wday, compile_time.tm_mday, compile_time.tm_mon, compile_time.tm_year);
+
     compile_time.tm_year -= 1900; // Convert to years since 1900
+
     mktime(&compile_time); // Calculate day of week
 
     if (validate_time(ds3231_handle, &compile_time) == ESP_OK && i2c_master_probe(*i2c_bus_handle, DS3231_I2C_ADDRESS,50) == ESP_OK)

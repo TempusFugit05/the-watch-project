@@ -16,6 +16,7 @@
 #include "widgets.h"
 
 #include "ds3231.h"
+#include "aht.h"
 
 #define LED_PIN             GPIO_NUM_2
 #define LED_PIN2   GPIO_NUM_25
@@ -37,8 +38,6 @@ hagl_backend_t* display; // Main display
 SemaphoreHandle_t display_mutex = xSemaphoreCreateMutex(); // Mutex to ensure two tasks aren't writing at the same time
 
 gptimer_handle_t button_timer; // Timer for button software debounce
-
-ds3231_handle_t ds3231_dev_handle; // Rtc
 
 i2c_master_bus_handle_t i2c_master_handle;
 
@@ -174,9 +173,14 @@ void time_keeper_task(void* arg)
     // BUG: When disconnecting the ds3231 from power, the program crashes...
     // (Possibly a hardware problem?)
     // Follow up: Turns out this only happens when disconnecting the scl or power pins...
-    const TickType_t task_delay_ms = pdMS_TO_TICKS(1000);
     static char TAG[] = "get_time_task";
     static bool manual_time_keeping = false; // Flag to determin if the function should switch to manual time counting
+    ds3231_handle_t ds3231_dev_handle = ds3231_init(&i2c_master_handle); // Rtc handle setup
+
+    // Set Rtc time to compilation time
+    ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
+    ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
+
 
     while (1)
     {
@@ -201,7 +205,7 @@ void time_keeper_task(void* arg)
             manual_time_count();
         } // Manually count time once rtc is unreachable
 
-        vTaskDelay(task_delay_ms); // Delay for 1 second
+        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 1 second
 
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
@@ -212,13 +216,13 @@ void time_keeper_task(void* arg)
 void main_screen_state_machine(input_event_t event)
 {    
     static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(100);
-    unsigned long current_time = xTaskGetTickCount();
     static unsigned long time_since_last_update = 0;
 
     static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
-    static widget *widget_obj = NULL;
-    
+    static widget *widget_instance = NULL;    
     static info_bar_widget *info_bar = new info_bar_widget(display, display_mutex, &rtc_time);
+
+    unsigned long current_time = xTaskGetTickCount();
 
     if (current_time - time_since_last_update >= face_switch_delay_ms)
     {
@@ -249,22 +253,22 @@ void main_screen_state_machine(input_event_t event)
             {
                 case SCREEN_CLOCK_FACE:
                     {
-                        if (widget_obj != NULL)
+                        if (widget_instance != NULL)
                         {
-                            delete widget_obj;
+                            delete widget_instance;
                         }
-                        widget_obj = new clock_widget(display, display_mutex, &rtc_time);
+                        widget_instance = new clock_widget(display, display_mutex, &rtc_time);
                         delete info_bar;
                         break;
                     }
 
                 case SCREEN_HEART_RATE_FACE:
                 {
-                    if (widget_obj != NULL)
+                    if (widget_instance != NULL)
                     {
-                        delete widget_obj;
+                        delete widget_instance;
                     }
-                    widget_obj = new test_widget(display, display_mutex);
+                    widget_instance = new test_widget(display, display_mutex);
                     info_bar = new info_bar_widget(display, display_mutex, &rtc_time);
                     break;
                 }
@@ -446,28 +450,21 @@ extern "C" void app_main(void)
     // i2c setup
     i2c_master_bus_handle_t i2c_master_handle = setup_i2c_master();
     
-    // Rtc setup
-    ds3231_dev_handle = ds3231_init(&i2c_master_handle); // rtc setup
-
-    // Set Rtc time to compilation time
-    ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
-    ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
-
     // Display setup
     hagl_backend_t* display_pointer = hagl_init();
     if (display_pointer == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
     display = display_pointer;
     hagl_clear(display);
 
-    main_screen_state_machine(SCROLL_UP_EVENT);
+    // Time-keeping task
+    TaskHandle_t time_keeper_task_handle;
+    xTaskCreatePinnedToCore(time_keeper_task, "time_keeper", 2048, NULL, 5, &time_keeper_task_handle, 0);
 
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isrs(); // Set up input interrupts
 
-    // Time-keeping task
-    TaskHandle_t time_keeper_task_handle;
-    xTaskCreatePinnedToCore(time_keeper_task, "time_keeper", 2048, NULL, 5, &time_keeper_task_handle, 0);
+    main_screen_state_machine(SCROLL_UP_EVENT);
 
     // Task to handle the various input interrupt signals
     TaskHandle_t input_events_handler_task_handle;

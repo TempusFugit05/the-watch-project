@@ -4,7 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "font5x7.h"
+#include "font6x9.h"
 #include "fonts.h"
 
 #include "hagl_hal.h"
@@ -193,7 +193,7 @@ extern "C" void info_bar_widget::run_widget()
                 snprintf(time_str, 32, "%02i:%02i:%02i",
                         current_time_struct.tm_hour, current_time_struct.tm_min, current_time_struct.tm_sec);
                 mbstowcs(formatted_time_str, time_str, 32);
-                hagl_put_text(display_handle, formatted_time_str, (SCREEN_SIZE_X-strlen(time_str)*5)/2, 5, color, font5x7);
+                hagl_put_text(display_handle, formatted_time_str, (SCREEN_SIZE_X-strlen(time_str)*5)/2, 10, color, font6x9);
             }
             xSemaphoreGive(mutex);
 
