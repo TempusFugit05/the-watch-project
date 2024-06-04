@@ -13,6 +13,8 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "ds3231.h"
+
 class widget
 {    
 protected:
@@ -30,7 +32,7 @@ class clock_widget : public widget
 {
     private:
         tm reference_time; // Older time to compare against
-        tm* current_time; // Newest time available
+        ds3231_handle_t* rtc_handle;
 
         char time_str [64]; // Buffer to display the time 
         wchar_t formatted_str [64]; // String buffer compatable with the display library
@@ -51,7 +53,7 @@ class clock_widget : public widget
         int weekday_text_cords_y;
 
     public:
-        clock_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, tm* time);
+        clock_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc);
         ~clock_widget() override;
         void run_widget () override;
 
@@ -61,13 +63,14 @@ class info_bar_widget : public widget
 {
     private:
         tm reference_time;
-        tm* current_time;
+        ds3231_handle_t* rtc_handle;
+
         char time_str[32];
         wchar_t formatted_time_str[32];
         bool first_run = true;
         
     public:
-        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, tm* time);
+        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc);
         ~info_bar_widget() override;
         void run_widget() override;
 };

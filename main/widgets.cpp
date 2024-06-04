@@ -14,6 +14,8 @@
 #include <cstring>
 #include <ctime>
 
+#include "ds3231.h"
+
 #define SCREEN_SIZE_X 240
 #define SCREEN_SIZE_Y 240
 
@@ -29,9 +31,6 @@ Guidelines:
 1.  The widget class should have a few basic functions:
     1.  Draw on screen - All the ui of the widget should be handled by a function that draws the ui elements
     2.  Get data - Get all the data necessary for the widget to work correctly
-    3.  Check update conditions - A function to to check if the arguments needed by the widget have changed from
-        the previous iteration. This is done to decide if the draw on screen function needs to be called.
-        (Less unecessary updating -> more optimized)
 
 2.  Every widget must have a few attributes:
         1.  Data required by the widget to function (e.g, heart rate for a heart rate monitor widget).
@@ -57,9 +56,10 @@ void inline call_run_widget(void* widget_obj)
 }
 
 
-extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  mutex, tm* time)
-: widget(widget_display, mutex), reference_time(*time), current_time(time)
+extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc)
+: widget(widget_display, mutex), rtc_handle(rtc)
 {
+    ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "clock_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
@@ -98,54 +98,55 @@ extern "C" void clock_widget::run_widget ()
         {
         
             hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
-            tm current_time_struct = *current_time;
+            struct tm current_time;
+            ds3231_get_datetime(rtc_handle, &current_time);
 
             /*Display hours*/
-            if (current_time_struct.tm_hour != reference_time.tm_hour || first_run)
+            if (current_time.tm_hour != reference_time.tm_hour || first_run)
             {
-                snprintf(time_str, 64, "%02i", current_time_struct.tm_hour);
+                snprintf(time_str, 64, "%02i", current_time.tm_hour);
                 hours_text_cords_y = 20;
                 mbstowcs(formatted_str, time_str, 64);
                 hours_text_cords_y = segment_font.size_y;
                 hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, hours_text_cords_y, color, segment_font.font);
             }
             /*Display minutes*/
-            if (current_time_struct.tm_min != reference_time.tm_min || first_run)
+            if (current_time.tm_min != reference_time.tm_min || first_run)
             {
-                snprintf(time_str, 64, "%02i", current_time_struct.tm_min);
+                snprintf(time_str, 64, "%02i", current_time.tm_min);
                 mbstowcs(formatted_str, time_str, 64);
                 minutes_text_cords_y = hours_text_cords_y + 5 + segment_font.size_y;
                 hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, minutes_text_cords_y, color, segment_font.font); // Display string
             }
             
             /*Display seconds*/
-            snprintf(time_str, 64, "%02i", current_time_struct.tm_sec);
+            snprintf(time_str, 64, "%02i", current_time.tm_sec);
             mbstowcs(formatted_str, time_str, 64);
             seconds_text_cords_y = minutes_text_cords_y + 5 + segment_font.size_y;
             hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, seconds_text_cords_y, color, segment_font.font); // Display string
             
             /*Display month day, month name and year*/
-            if (current_time_struct.tm_mday != reference_time.tm_mday || first_run)
+            if (current_time.tm_mday != reference_time.tm_mday || first_run)
             {
-                current_time_struct.tm_year += 1900;
-                month_to_str(current_time_struct.tm_mon, month_str);
+                current_time.tm_year += 1900;
+                month_to_str(current_time.tm_mon, month_str);
                 snprintf(time_str, 64, "%02i %s %04i", 
-                current_time_struct.tm_mday, month_str, current_time_struct.tm_year);
+                current_time.tm_mday, month_str, current_time.tm_year);
                 mbstowcs(formatted_str, time_str, 64);
                 months_text_cords_y = seconds_text_cords_y + 5 + segment_font.size_y;
                 hagl_put_text(display_handle, formatted_str, SCREEN_SIZE_X/2 - strlen(time_str)*4, months_text_cords_y, color, font10x20.font); // Display string
             }
 
             /*Display weekday*/
-            if (current_time_struct.tm_wday != reference_time.tm_wday || first_run)
+            if (current_time.tm_wday != reference_time.tm_wday || first_run)
             {
-                weekday_to_str(current_time_struct.tm_wday, weekday_str);
+                weekday_to_str(current_time.tm_wday, weekday_str);
                 mbstowcs(formatted_weekday, weekday_str, 10);
                 weekday_text_cords_y = months_text_cords_y + 5 + font10x20.size_y;
                 hagl_put_text(display_handle, formatted_weekday, SCREEN_SIZE_X/2 - strlen(weekday_str)*4, weekday_text_cords_y, color, font10x20.font); // Display string
             }
             
-            reference_time = current_time_struct;
+            reference_time = current_time;
             if (first_run)
             {
                 first_run = false;
@@ -161,8 +162,9 @@ extern "C" void clock_widget::run_widget ()
 
 /*info_bar_widget to display time and other info if*/
 
-extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, tm* time) : widget(display, mutex), reference_time(*time), current_time(time)
+extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc) : widget(display, mutex), rtc_handle(rtc)
 {
+    ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "info_bar", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
@@ -186,12 +188,13 @@ extern "C" void info_bar_widget::run_widget()
         if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)))
         {
             hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
-            tm current_time_struct = *current_time;
+            struct tm current_time;
+            ds3231_get_datetime(rtc_handle, &current_time);
 
-            if (reference_time.tm_sec != current_time_struct.tm_sec || first_run)
+            if (reference_time.tm_sec != current_time.tm_sec || first_run)
             {
                 snprintf(time_str, 32, "%02i:%02i:%02i",
-                        current_time_struct.tm_hour, current_time_struct.tm_min, current_time_struct.tm_sec);
+                        current_time.tm_hour, current_time.tm_min, current_time.tm_sec);
                 mbstowcs(formatted_time_str, time_str, 32);
                 hagl_put_text(display_handle, formatted_time_str, (SCREEN_SIZE_X-strlen(time_str)*5)/2, 10, color, font6x9);
             }

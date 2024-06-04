@@ -37,11 +37,11 @@
 hagl_backend_t* display; // Main display 
 SemaphoreHandle_t display_mutex = xSemaphoreCreateMutex(); // Mutex to ensure two tasks aren't writing at the same time
 
+ds3231_handle_t ds3231_dev_handle;
+
 gptimer_handle_t button_timer; // Timer for button software debounce
 
 i2c_master_bus_handle_t i2c_master_handle;
-
-tm rtc_time; // Time from the rtc module
 
 typedef enum : uint8_t{
     SHORT_PRESS_EVENT,
@@ -145,74 +145,6 @@ one of them will always change before the other when rotating clockwise and vise
     }
 }
 
-void manual_time_count()
-{
-    // This function is a rudamentary way to keep track of the time if the rtc fails
-
-    if((rtc_time.tm_sec += 1) > 59) // Add second
-    {
-        rtc_time.tm_sec = 0;
-
-        if ((rtc_time.tm_min += 1) > 59) // Add minute
-        {
-            rtc_time.tm_min = 0;
-
-            if ((rtc_time.tm_hour += 1) > 24) // Add hour (only 24 h format supported)
-            {
-                rtc_time.tm_hour = 0;
-                rtc_time.tm_mday += 1; // Add day
-            }
-        }
-    }
-}
-
-void time_keeper_task(void* arg)
-{
-    // Gets the time from the rtc module, if rtc fails, starts manual time counting
-
-    // BUG: When disconnecting the ds3231 from power, the program crashes...
-    // (Possibly a hardware problem?)
-    // Follow up: Turns out this only happens when disconnecting the scl or power pins...
-    static char TAG[] = "get_time_task";
-    static bool manual_time_keeping = false; // Flag to determin if the function should switch to manual time counting
-    ds3231_handle_t ds3231_dev_handle = ds3231_init(&i2c_master_handle); // Rtc handle setup
-
-    // Set Rtc time to compilation time
-    ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
-    ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
-
-
-    while (1)
-    {
-        if(i2c_master_probe(i2c_master_handle, DS3231_I2C_ADDRESS, 50) == ESP_OK)
-        {
-            if (manual_time_keeping)
-            {
-                manual_time_keeping = false;
-                ESP_LOGI(TAG, "rtc recconnected! Reading from rtc...");
-            }
-            ESP_ERROR_CHECK(ds3231_get_datetime(&ds3231_dev_handle, &rtc_time));
-        }// Get time from the rtc if it is connected to the esp
-        
-        else
-        {
-            if (!manual_time_keeping)
-            {
-                ESP_LOGE(TAG, "Couldn't connect to the rtc! Starting manual time-keeping...");
-                manual_time_keeping = true;
-            } // Runs once when rtc is unreachable to prevent unecessary console spam
-
-            manual_time_count();
-        } // Manually count time once rtc is unreachable
-
-        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 1 second
-
-        #ifdef CHECK_TASK_SIZES
-            ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
-        #endif
-    }
-}
-
 void main_screen_state_machine(input_event_t event)
 {    
     static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(100);
@@ -220,7 +152,7 @@ void main_screen_state_machine(input_event_t event)
 
     static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
     static widget *widget_instance = NULL;    
-    static info_bar_widget *info_bar = new info_bar_widget(display, display_mutex, &rtc_time);
+    static info_bar_widget *info_bar = NULL; //new info_bar_widget(display, display_mutex, &ds3231_dev_handle);
 
     unsigned long current_time = xTaskGetTickCount();
 
@@ -257,7 +189,7 @@ void main_screen_state_machine(input_event_t event)
                         {
                             delete widget_instance;
                         }
-                        widget_instance = new clock_widget(display, display_mutex, &rtc_time);
+                        widget_instance = new clock_widget(display, display_mutex, &ds3231_dev_handle);
                         delete info_bar;
                         break;
                     }
@@ -269,7 +201,7 @@ void main_screen_state_machine(input_event_t event)
                         delete widget_instance;
                     }
                     widget_instance = new test_widget(display, display_mutex);
-                    info_bar = new info_bar_widget(display, display_mutex, &rtc_time);
+                    info_bar = new info_bar_widget(display, display_mutex, &ds3231_dev_handle);
                     break;
                 }
                 default:
@@ -448,21 +380,20 @@ i2c_master_bus_handle_t setup_i2c_master()
 extern "C" void app_main(void)
 {
     // i2c setup
-    i2c_master_bus_handle_t i2c_master_handle = setup_i2c_master();
-    
+    setup_i2c_master();
+
     // Display setup
     hagl_backend_t* display_pointer = hagl_init();
     if (display_pointer == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
     display = display_pointer;
     hagl_clear(display);
 
-    // Time-keeping task
-    TaskHandle_t time_keeper_task_handle;
-    xTaskCreatePinnedToCore(time_keeper_task, "time_keeper", 2048, NULL, 5, &time_keeper_task_handle, 0);
-
     setup_gpio(); // Set up the gpio pins for inputs
     button_timer = setup_gptimer(); // Create timer for software debounce
     setup_isrs(); // Set up input interrupts
+
+    ds3231_dev_handle = ds3231_init(&i2c_master_handle);
+    ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
 
     main_screen_state_machine(SCROLL_UP_EVENT);
 
