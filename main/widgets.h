@@ -98,9 +98,7 @@ class snake_game_widget : public widget
         int tile_size_x;
         int tile_size_y;
 
-        int** game_tiles;
         int num_tiles;
-
         tile** background_tiles;
         void create_background();
         void draw_background();

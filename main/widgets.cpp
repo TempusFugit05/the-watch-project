@@ -20,7 +20,7 @@
 #define SCREEN_SIZE_X 240
 #define SCREEN_SIZE_Y 240
 
-#define CHECK_TASK_SIZES
+// #define CHECK_TASK_SIZES
 
 /*
 Widgets:
@@ -260,7 +260,7 @@ extern "C" snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, 
     int total_display_area = (display_bounds.x1-display_bounds.x0)*(display_bounds.y1-display_bounds.y0); 
     
     // Allocate memory to store game tile data
-    background_tiles = (tile**)pvPortMalloc(sizeof(tile*)*(clip.x1/tile_size_x)*sizeof(tile) * (clip.y1/tile_size_y));
+    background_tiles = (tile**)pvPortMalloc(sizeof(tile*)*(clip.x1/tile_size_x));
     for(int i = 0; i < clip.x1/tile_size_x; i++)
     {
         background_tiles[i] = (tile*)pvPortMalloc(sizeof(tile) * (clip.y1/tile_size_y));
@@ -280,7 +280,12 @@ extern "C" snake_game_widget::~snake_game_widget()
         hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, hagl_color(display_handle,0,0,0)); // Clear screen
         xSemaphoreGive(display_mutex);
     } // Clear screen
-    vPortFree(game_tiles);
+
+    for(int i = 0; i < clip.x1/tile_size_x; i++)
+    {
+        vPortFree(background_tiles[i]);
+    }
+    vPortFree(background_tiles);
 }
 
 extern "C" void snake_game_widget::create_background()
@@ -309,7 +314,7 @@ extern "C" void snake_game_widget::draw_background()
 {
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
-        hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1);
+        hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1); // Set drawable area
         
         int tile_index_x = 0;
         int tile_index_y;
@@ -324,9 +329,9 @@ extern "C" void snake_game_widget::draw_background()
             }
             hagl_fill_rectangle_xywh(display_handle, background_tiles[tile_index_x][tile_index_y].x, background_tiles[tile_index_x][tile_index_y].y, tile_size_x, tile_size_y, background_tiles[tile_index_x][tile_index_y].color);
         }
-    }
+    
     xSemaphoreGive(display_mutex);
-
+    }
 }
 
 extern "C" void snake_game_widget::run_widget()
@@ -335,10 +340,18 @@ extern "C" void snake_game_widget::run_widget()
     create_background();
     draw_background();
     while (1)
-    {        
+    {   
+        if (xSemaphoreTake(display_mutex, portMAX_DELAY))
+        {
+            
+
+        xSemaphoreGive(display_mutex);
+        }
+
         #ifdef CHECK_TASK_SIZES
         ESP_LOGI("test_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
+        
         vTaskDelay(portMAX_DELAY);
     }
 }
