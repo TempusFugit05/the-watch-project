@@ -16,10 +16,9 @@
 #include "widgets.h"
 
 #include "ds3231.h"
-#include "aht.h"
 
 #define LED_PIN             GPIO_NUM_2
-#define LED_PIN2   GPIO_NUM_25
+#define LED_PIN2            GPIO_NUM_25
 
 #define GPIO_BUTTON_PIN     GPIO_NUM_34
 #define ENCODER_CLK_PIN     GPIO_NUM_39
@@ -44,6 +43,7 @@ gptimer_handle_t button_timer; // Timer for button software debounce
 i2c_master_bus_handle_t i2c_master_handle;
 
 typedef enum : uint8_t{
+    INIT_EVENT,
     SHORT_PRESS_EVENT,
     LONG_PRESS_EVENT,
     SCROLL_UP_EVENT,
@@ -146,10 +146,14 @@ one of them will always change before the other when rotating clockwise and vise
 }
 
 void main_screen_state_machine(input_event_t event)
-{    
-    static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(100);
+{
+    /*This function handles the switching of ui elements upon input events*/
+
+    /*Delay amount to prevent switching faces too fast*/
+    static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(100); 
     static unsigned long time_since_last_update = 0;
 
+    /*Currently running ui elements*/
     static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
     static widget *widget_instance = NULL;    
     static info_bar_widget *info_bar = NULL; //new info_bar_widget(display, display_mutex, &ds3231_dev_handle);
@@ -157,7 +161,7 @@ void main_screen_state_machine(input_event_t event)
     unsigned long current_time = xTaskGetTickCount();
 
     if (current_time - time_since_last_update >= face_switch_delay_ms)
-    {
+    { 
         switch (event)
         {
         case SCROLL_UP_EVENT:
@@ -165,7 +169,7 @@ void main_screen_state_machine(input_event_t event)
             if (current_face >= SCREEN_FACES_PADDING_UPPER)
             {
                 current_face = static_cast<main_screen_faces_t>(SCREEN_FACES_PADDING_LOWER + 1);
-            }
+            } // Switch to the next widget upon scrolling the encoder CCW
             break;
         
         case SCROLL_DOWN_EVENT:
@@ -173,7 +177,8 @@ void main_screen_state_machine(input_event_t event)
             if (current_face <= SCREEN_FACES_PADDING_LOWER)
             {
                 current_face = static_cast<main_screen_faces_t>(SCREEN_FACES_PADDING_UPPER - 1);
-            }
+            } // Switch to the previous widget upon scrolling the encoder CC
+            break;
 
         default:
             break;
@@ -192,7 +197,7 @@ void main_screen_state_machine(input_event_t event)
                         widget_instance = new clock_widget(display, display_mutex, &ds3231_dev_handle);
                         delete info_bar;
                         break;
-                    }
+                    } // Create clock widget and delete info bar widget if it exists
 
                 case SCREEN_HEART_RATE_FACE:
                 {
@@ -206,9 +211,16 @@ void main_screen_state_machine(input_event_t event)
                 }
                 default:
                     break;
-            }
-            time_since_last_update = current_time;
+            } // Create a demo widget and an info bar widget
+            time_since_last_update = current_time; // Update the time at switching
         }
+
+        if (event == INIT_EVENT)
+        {
+            hagl_window_t clip = {.x0 = 0, .y0 = 0, .x1 = 240, .y1 = 240};
+            widget_instance = new snake_game_widget(display, display_mutex, clip);
+            current_face = SCREEN_CLOCK_FACE;
+        } // Initialize the clock widget upon startup
     }
 }
 
@@ -395,8 +407,8 @@ extern "C" void app_main(void)
     ds3231_dev_handle = ds3231_init(&i2c_master_handle);
     ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
 
-    main_screen_state_machine(SCROLL_UP_EVENT);
-
+    main_screen_state_machine(INIT_EVENT);
+    
     // Task to handle the various input interrupt signals
     TaskHandle_t input_events_handler_task_handle;
     xTaskCreatePinnedToCore(input_events_handler_task, "input_events_handler_task", 2048, NULL, 5, &input_events_handler_task_handle, 0);

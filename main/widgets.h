@@ -19,11 +19,11 @@ class widget
 {    
 protected:
     hagl_backend_t* display_handle;
-    SemaphoreHandle_t mutex;
+    SemaphoreHandle_t display_mutex;
     TaskHandle_t task_handle;
 
 public:
-    widget(hagl_backend_t* display_handle, SemaphoreHandle_t  mutex);
+    widget(hagl_backend_t* display_handle, SemaphoreHandle_t  display_mutex);
     virtual ~widget() = 0;
     virtual void run_widget() = 0;
 };
@@ -53,7 +53,7 @@ class clock_widget : public widget
         int weekday_text_cords_y;
 
     public:
-        clock_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc);
+        clock_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc);
         ~clock_widget() override;
         void run_widget () override;
 
@@ -70,7 +70,7 @@ class info_bar_widget : public widget
         bool first_run = true;
         
     public:
-        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc);
+        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc);
         ~info_bar_widget() override;
         void run_widget() override;
 };
@@ -78,13 +78,41 @@ class info_bar_widget : public widget
 class test_widget : public widget
 {
     public:
-        test_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex);
+        test_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex);
         ~test_widget() override;
-        void run_widget () override;
+        void run_widget() override;
+};
+
+class snake_game_widget : public widget
+{
+    private:
+        hagl_window_t clip;
+        
+        struct tile
+        {
+            uint16_t x;
+            uint16_t y;
+            hagl_color_t color;
+        };
+        
+        int tile_size_x;
+        int tile_size_y;
+
+        int** game_tiles;
+        int num_tiles;
+
+        tile** background_tiles;
+        void create_background();
+        void draw_background();
+
+    public:
+        snake_game_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t display_bounds);
+        ~snake_game_widget() override;
+        void run_widget() override;
 };
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // WIDGETS_H
+#endif // WIDGETS_

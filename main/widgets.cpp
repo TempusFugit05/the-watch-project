@@ -13,13 +13,14 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <random>
 
 #include "ds3231.h"
 
 #define SCREEN_SIZE_X 240
 #define SCREEN_SIZE_Y 240
 
-// #define CHECK_TASK_SIZES
+#define CHECK_TASK_SIZES
 
 /*
 Widgets:
@@ -44,7 +45,7 @@ Guidelines:
     for anything from simple information displays, settings menus, widgets to a freaking game of Snake.
 */
 
-extern "C" widget::widget(hagl_backend_t* display, SemaphoreHandle_t  mutex) : display_handle(display), mutex(mutex){};
+extern "C" widget::widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex) : display_handle(display), display_mutex(display_mutex){};
 extern "C" widget::~widget(){}
 extern "C" void widget::run_widget(){}
 
@@ -56,8 +57,8 @@ void inline call_run_widget(void* widget_obj)
 }
 
 
-extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc)
-: widget(widget_display, mutex), rtc_handle(rtc)
+extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc)
+: widget(widget_display, display_mutex), rtc_handle(rtc)
 {
     ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "clock_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
@@ -65,12 +66,12 @@ extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreH
 
 extern "C" clock_widget::~clock_widget()
 {
-    if (xSemaphoreTake(mutex, pdMS_TO_TICKS(10)))
+    if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
     {
         vTaskDelete(task_handle);
         hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
         hagl_fill_rectangle_xyxy(display_handle, 0, 20, SCREEN_SIZE_X, SCREEN_SIZE_Y, hagl_color(display_handle,0,0,0)); // Clear screen
-        xSemaphoreGive(mutex);
+        xSemaphoreGive(display_mutex);
     } // Clear screen
 }
 
@@ -94,7 +95,7 @@ extern "C" void clock_widget::run_widget ()
     
     while (1)
     {
-        if (xSemaphoreTake(mutex, portMAX_DELAY))
+        if (xSemaphoreTake(display_mutex, portMAX_DELAY))
         {
         
             hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
@@ -151,7 +152,7 @@ extern "C" void clock_widget::run_widget ()
             {
                 first_run = false;
             }
-            xSemaphoreGive(mutex);
+            xSemaphoreGive(display_mutex);
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
@@ -162,7 +163,7 @@ extern "C" void clock_widget::run_widget ()
 
 /*info_bar_widget to display time and other info if*/
 
-extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  mutex, ds3231_handle_t* rtc) : widget(display, mutex), rtc_handle(rtc)
+extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc) : widget(display, display_mutex), rtc_handle(rtc)
 {
     ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "info_bar", 2048, this, 3, &task_handle); // Create task to call run_widget
@@ -170,12 +171,12 @@ extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHa
 
 extern "C" info_bar_widget::~info_bar_widget()
 {
-    if (xSemaphoreTake(mutex, portMAX_DELAY))
+    if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
         hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
         vTaskDelete(task_handle);
         hagl_fill_rectangle_xyxy(display_handle, 0, 0, SCREEN_SIZE_X, 20, hagl_color(display_handle,0,0,0)); // Clear screen
-        xSemaphoreGive(mutex);
+        xSemaphoreGive(display_mutex);
     } // Clear screen
 }
 
@@ -185,7 +186,7 @@ extern "C" void info_bar_widget::run_widget()
 
     while (1)
     {
-        if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)))
+        if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
         {
             hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
             struct tm current_time;
@@ -198,7 +199,7 @@ extern "C" void info_bar_widget::run_widget()
                 mbstowcs(formatted_time_str, time_str, 32);
                 hagl_put_text(display_handle, formatted_time_str, (SCREEN_SIZE_X-strlen(time_str)*5)/2, 10, color, font6x9);
             }
-            xSemaphoreGive(mutex);
+            xSemaphoreGive(display_mutex);
 
             #ifdef CHECK_TASK_SIZES
                 ESP_LOGI("info_bar_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
@@ -212,20 +213,21 @@ extern "C" void info_bar_widget::run_widget()
 
 /*test_widget for testing!*/
 
-extern "C" test_widget::test_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  mutex) : widget(widget_display, mutex)
+extern "C" test_widget::test_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex) : widget(widget_display, display_mutex)
 {
     xTaskCreate(call_run_widget, "test_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
 extern "C" test_widget::~test_widget()
 {
-    if (xSemaphoreTake(mutex, portMAX_DELAY))
+    if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
         vTaskDelete(task_handle);
         hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
         hagl_fill_rectangle_xyxy(display_handle, 0, 20, SCREEN_SIZE_X, SCREEN_SIZE_Y, hagl_color(display_handle,0,0,0)); // Clear screen
-        xSemaphoreGive(mutex);
+        xSemaphoreGive(display_mutex);
     } // Clear screen
+    
 }
 extern "C" void test_widget::run_widget()
 {
@@ -233,7 +235,7 @@ extern "C" void test_widget::run_widget()
     int radius = 0;
     while (1)
     {
-        if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)))
+        if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
         {
             hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
             hagl_draw_circle(display_handle, SCREEN_SIZE_X/2, SCREEN_SIZE_Y/2, radius, color);
@@ -242,8 +244,101 @@ extern "C" void test_widget::run_widget()
         #ifdef CHECK_TASK_SIZES
         ESP_LOGI("test_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
-            xSemaphoreGive(mutex);
+            xSemaphoreGive(display_mutex);
             vTaskDelay(pdMS_TO_TICKS(50));
         }
+    }
+}
+
+/*Demo snake game widget*/
+
+extern "C" snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t display_bounds) :
+                                               widget(widget_display, display_mutex), clip(display_bounds)
+{
+    tile_size_x = 10; // Placeholder tile sizes
+    tile_size_y = 10;
+    int total_display_area = (display_bounds.x1-display_bounds.x0)*(display_bounds.y1-display_bounds.y0); 
+    
+    // Allocate memory to store game tile data
+    background_tiles = (tile**)pvPortMalloc(sizeof(tile*)*(clip.x1/tile_size_x)*sizeof(tile) * (clip.y1/tile_size_y));
+    for(int i = 0; i < clip.x1/tile_size_x; i++)
+    {
+        background_tiles[i] = (tile*)pvPortMalloc(sizeof(tile) * (clip.y1/tile_size_y));
+    }
+
+    num_tiles = total_display_area/(tile_size_x*tile_size_y);
+    ESP_LOGI("", "%i", num_tiles);
+    xTaskCreate(call_run_widget, "test_widget", 8192, this, 3, &task_handle); // Create task to call run_widget
+}
+
+extern "C" snake_game_widget::~snake_game_widget()
+{
+    if (xSemaphoreTake(display_mutex, portMAX_DELAY))
+    {
+        vTaskDelete(task_handle);
+        hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1); // Set drawable area
+        hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, hagl_color(display_handle,0,0,0)); // Clear screen
+        xSemaphoreGive(display_mutex);
+    } // Clear screen
+    vPortFree(game_tiles);
+}
+
+extern "C" void snake_game_widget::create_background()
+{
+    int tile_index_x = 0;
+    int tile_index_y;
+    for (int i=0; i < num_tiles; i++)
+    {
+        tile_index_y = i%((clip.y0 - clip.y1)/tile_size_y);
+
+        if (i%((clip.x0 - clip.x1)/tile_size_x) == 0 && i!=0)
+        {
+            tile_index_x++;
+        }
+
+        // ESP_LOGI("", "x: %i y: %i", tile_index_y, tile_index_x);
+
+        background_tiles[tile_index_x][tile_index_y].x = tile_index_x*tile_size_x;
+        background_tiles[tile_index_x][tile_index_y].y = tile_index_y*tile_size_y;
+        background_tiles[tile_index_x][tile_index_y].color = hagl_color(display_handle, rand()%255, rand()%255, rand()%255);
+    }
+    heap_caps_check_integrity_all("");
+}
+
+extern "C" void snake_game_widget::draw_background()
+{
+    if (xSemaphoreTake(display_mutex, portMAX_DELAY))
+    {
+        hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1);
+        
+        int tile_index_x = 0;
+        int tile_index_y;
+
+        for(int i = 0; i < num_tiles; i++)
+        {
+            tile_index_y = i%((clip.y0 - clip.y1)/tile_size_y);
+
+            if (i%((clip.x0 - clip.x1)/tile_size_x) == 0 && i!=0)
+            {
+                tile_index_x++;
+            }
+            hagl_fill_rectangle_xywh(display_handle, background_tiles[tile_index_x][tile_index_y].x, background_tiles[tile_index_x][tile_index_y].y, tile_size_x, tile_size_y, background_tiles[tile_index_x][tile_index_y].color);
+        }
+    }
+    xSemaphoreGive(display_mutex);
+
+}
+
+extern "C" void snake_game_widget::run_widget()
+{
+    srand(2);
+    create_background();
+    draw_background();
+    while (1)
+    {        
+        #ifdef CHECK_TASK_SIZES
+        ESP_LOGI("test_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+        #endif
+        vTaskDelay(portMAX_DELAY);
     }
 }

@@ -63,7 +63,7 @@ ds3231_handle_t ds3231_init(i2c_master_bus_handle_t *bus_handle)
     {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = DS3231_I2C_ADDRESS,
-        .scl_speed_hz = 100000
+        .scl_speed_hz = 400000
     };
     i2c_master_dev_handle_t dev_handle;
     ESP_ERROR_CHECK(i2c_master_bus_add_device(*bus_handle, &conf, &dev_handle));
