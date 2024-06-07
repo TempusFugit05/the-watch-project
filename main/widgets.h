@@ -14,6 +14,7 @@ extern "C" {
 #include "freertos/task.h"
 
 #include "ds3231.h"
+#include "grid.h"
 
 class widget
 {    
@@ -83,26 +84,19 @@ class test_widget : public widget
         void run_widget() override;
 };
 
+
 class snake_game_widget : public widget
 {
     private:
         hagl_window_t clip;
         
-        struct tile
-        {
-            uint16_t x;
-            uint16_t y;
-            hagl_color_t color;
-        };
-        
         int tile_size_x;
         int tile_size_y;
 
-        int num_tiles;
-        tile** background_tiles;
-        void create_background();
-        void draw_background();
+        grid* game_grid;
 
+        void draw_tile_map();
+        
     public:
         snake_game_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t display_bounds);
         ~snake_game_widget() override;

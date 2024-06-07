@@ -45,9 +45,9 @@ Guidelines:
     for anything from simple information displays, settings menus, widgets to a freaking game of Snake.
 */
 
-extern "C" widget::widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex) : display_handle(display), display_mutex(display_mutex){};
-extern "C" widget::~widget(){}
-extern "C" void widget::run_widget(){}
+widget::widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex) : display_handle(display), display_mutex(display_mutex){};
+widget::~widget(){}
+void widget::run_widget(){}
 
 void inline call_run_widget(void* widget_obj)
 {
@@ -57,14 +57,14 @@ void inline call_run_widget(void* widget_obj)
 }
 
 
-extern "C" clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc)
+clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc)
 : widget(widget_display, display_mutex), rtc_handle(rtc)
 {
     ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "clock_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
-extern "C" clock_widget::~clock_widget()
+clock_widget::~clock_widget()
 {
     if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
     {
@@ -75,21 +75,21 @@ extern "C" clock_widget::~clock_widget()
     } // Clear screen
 }
 
-extern "C" void clock_widget::month_to_str(int month, char* buffer)
+void clock_widget::month_to_str(int month, char* buffer)
 {
     /*This function converts a month index intop a string and writes it to a buffer*/
     static const char* months_of_year[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};    
     strcpy(buffer, months_of_year[month]); // Copy the month string into the buffer
 }
 
-extern "C" void clock_widget::weekday_to_str(int weekday, char* buffer)
+void clock_widget::weekday_to_str(int weekday, char* buffer)
 {
     /*Convert weekday into string and writes it into a buffer*/
     static const char* days_of_week[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
     strcpy(buffer, days_of_week[weekday]); // Copy the day of week string into the buffer
 }
 
-extern "C" void clock_widget::run_widget ()
+void clock_widget::run_widget ()
 {
     static const hagl_color_t color = hagl_color(display_handle, 255, 100, 255); // Placeholder color (Note: the r and b channels are inverted on my display)
     
@@ -163,13 +163,13 @@ extern "C" void clock_widget::run_widget ()
 
 /*info_bar_widget to display time and other info if*/
 
-extern "C" info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc) : widget(display, display_mutex), rtc_handle(rtc)
+info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc) : widget(display, display_mutex), rtc_handle(rtc)
 {
     ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "info_bar", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
-extern "C" info_bar_widget::~info_bar_widget()
+info_bar_widget::~info_bar_widget()
 {
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
@@ -180,7 +180,7 @@ extern "C" info_bar_widget::~info_bar_widget()
     } // Clear screen
 }
 
-extern "C" void info_bar_widget::run_widget()
+void info_bar_widget::run_widget()
 {
     static const hagl_color_t color = hagl_color(display_handle, 255, 255, 255);
 
@@ -213,12 +213,12 @@ extern "C" void info_bar_widget::run_widget()
 
 /*test_widget for testing!*/
 
-extern "C" test_widget::test_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex) : widget(widget_display, display_mutex)
+test_widget::test_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex) : widget(widget_display, display_mutex)
 {
     xTaskCreate(call_run_widget, "test_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
 }
 
-extern "C" test_widget::~test_widget()
+test_widget::~test_widget()
 {
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
@@ -229,7 +229,7 @@ extern "C" test_widget::~test_widget()
     } // Clear screen
     
 }
-extern "C" void test_widget::run_widget()
+void test_widget::run_widget()
 {
     static const hagl_color_t color = hagl_color(display_handle, 255, 255, 255);
     int radius = 0;
@@ -245,33 +245,23 @@ extern "C" void test_widget::run_widget()
         ESP_LOGI("test_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
             xSemaphoreGive(display_mutex);
-            vTaskDelay(pdMS_TO_TICKS(50));
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
 }
 
 /*Demo snake game widget*/
 
-extern "C" snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t display_bounds) :
+snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t display_bounds) :
                                                widget(widget_display, display_mutex), clip(display_bounds)
 {
     tile_size_x = 10; // Placeholder tile sizes
     tile_size_y = 10;
-    int total_display_area = (display_bounds.x1-display_bounds.x0)*(display_bounds.y1-display_bounds.y0); 
-    
-    // Allocate memory to store game tile data
-    background_tiles = (tile**)pvPortMalloc(sizeof(tile*)*(clip.x1/tile_size_x));
-    for(int i = 0; i < clip.x1/tile_size_x; i++)
-    {
-        background_tiles[i] = (tile*)pvPortMalloc(sizeof(tile) * (clip.y1/tile_size_y));
-    }
 
-    num_tiles = total_display_area/(tile_size_x*tile_size_y);
-    ESP_LOGI("", "%i", num_tiles);
     xTaskCreate(call_run_widget, "test_widget", 8192, this, 3, &task_handle); // Create task to call run_widget
 }
 
-extern "C" snake_game_widget::~snake_game_widget()
+snake_game_widget::~snake_game_widget()
 {
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
@@ -280,65 +270,44 @@ extern "C" snake_game_widget::~snake_game_widget()
         hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, hagl_color(display_handle,0,0,0)); // Clear screen
         xSemaphoreGive(display_mutex);
     } // Clear screen
-
-    for(int i = 0; i < clip.x1/tile_size_x; i++)
-    {
-        vPortFree(background_tiles[i]);
-    }
-    vPortFree(background_tiles);
 }
 
-extern "C" void snake_game_widget::create_background()
+void snake_game_widget::draw_tile_map()
 {
-    int tile_index_x = 0;
-    int tile_index_y;
-    for (int i=0; i < num_tiles; i++)
-    {
-        tile_index_y = i%((clip.y0 - clip.y1)/tile_size_y);
+    int delta_x = clip.x1 - clip.x0;
+    int delta_y = clip.y1 - clip.y0;
 
-        if (i%((clip.x0 - clip.x1)/tile_size_x) == 0 && i!=0)
-        {
-            tile_index_x++;
-        }
-
-        // ESP_LOGI("", "x: %i y: %i", tile_index_y, tile_index_x);
-
-        background_tiles[tile_index_x][tile_index_y].x = tile_index_x*tile_size_x;
-        background_tiles[tile_index_x][tile_index_y].y = tile_index_y*tile_size_y;
-        background_tiles[tile_index_x][tile_index_y].color = hagl_color(display_handle, rand()%255, rand()%255, rand()%255);
-    }
-    heap_caps_check_integrity_all("");
-}
-
-extern "C" void snake_game_widget::draw_background()
-{
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
         hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1); // Set drawable area
         
-        int tile_index_x = 0;
-        int tile_index_y;
+        tile* current_tile = game_grid->get_tile(0, 0);
 
-        for(int i = 0; i < num_tiles; i++)
+        for(int i = 0; i < 240*240; i++)
         {
-            tile_index_y = i%((clip.y0 - clip.y1)/tile_size_y);
+            hagl_fill_rectangle_xywh(display_handle,
+                                    (current_tile->x*tile_size_x)+clip.x0,
+                                    (current_tile->y*tile_size_y)+clip.y0,
+                                    tile_size_x, tile_size_y,
+                                    *((uint8_t*)current_tile->metadata)*255);
 
-            if (i%((clip.x0 - clip.x1)/tile_size_x) == 0 && i!=0)
+            current_tile = game_grid->get_next_tile(current_tile);
+            
+            if (current_tile == NULL)
             {
-                tile_index_x++;
+                break;
             }
-            hagl_fill_rectangle_xywh(display_handle, background_tiles[tile_index_x][tile_index_y].x, background_tiles[tile_index_x][tile_index_y].y, tile_size_x, tile_size_y, background_tiles[tile_index_x][tile_index_y].color);
         }
     
     xSemaphoreGive(display_mutex);
     }
 }
 
-extern "C" void snake_game_widget::run_widget()
+void snake_game_widget::run_widget()
 {
-    srand(2);
-    create_background();
-    draw_background();
+    game_grid = new grid(24, 24, 1);
+    draw_tile_map();
+
     while (1)
     {   
         if (xSemaphoreTake(display_mutex, portMAX_DELAY))
