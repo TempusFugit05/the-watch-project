@@ -255,8 +255,8 @@ void test_widget::run_widget()
 snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t display_bounds) :
                                                widget(widget_display, display_mutex), clip(display_bounds)
 {
-    tile_size_x = 10; // Placeholder tile sizes
-    tile_size_y = 10;
+    tile_size_x = 5; // Placeholder tile sizes
+    tile_size_y = 5;
 
     xTaskCreate(call_run_widget, "test_widget", 8192, this, 3, &task_handle); // Create task to call run_widget
 }

@@ -1,10 +1,6 @@
 #ifndef WIDGETS_H
 #define WIDGETS_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <ctime>
 
 #include "hagl_hal.h"
@@ -102,9 +98,5 @@ class snake_game_widget : public widget
         ~snake_game_widget() override;
         void run_widget() override;
 };
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // WIDGETS_

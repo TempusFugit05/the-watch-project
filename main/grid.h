@@ -1,7 +1,9 @@
 #ifndef GRID_H
 #define GRID_H
+
 #include <cstdio>
 #include <list>
+
 typedef struct
 {
     uint8_t x;
@@ -53,7 +55,7 @@ public:
 // This might also be useless based off the usefulness of the pure grid!
 // It would probably be simpler to just create an array of some data type and calculate the xy values based on the index...
 
-/*TODO: Create a virtual grid system*/
+/*TODO: Create a virtual grid system. As well as a linked list*/
 
 // class virtual_grid
 // {

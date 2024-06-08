@@ -217,7 +217,7 @@ void main_screen_state_machine(input_event_t event)
 
         if (event == INIT_EVENT)
         {
-            hagl_window_t clip = {.x0 = 0, .y0 = 0, .x1 = 240, .y1 = 240};
+            hagl_window_t clip = {.x0 = 60, .y0 = 60, .x1 = 240, .y1 = 240};
             widget_instance = new snake_game_widget(display, display_mutex, clip);
             current_face = SCREEN_CLOCK_FACE;
         } // Initialize the clock widget upon startup
