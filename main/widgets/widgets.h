@@ -3,14 +3,17 @@
 
 #include <ctime>
 
-#include "hagl_hal.h"
-#include "hagl.h"
+#include "./hagl_hal.h"
+#include "./hagl.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "ds3231.h"
-#include "grid.h"
+#include "grid/grid.h"
+
+#define SCREEN_SIZE_X 240
+#define SCREEN_SIZE_Y 240
 
 class widget
 {    
@@ -24,6 +27,13 @@ public:
     virtual ~widget() = 0;
     virtual void run_widget() = 0;
 };
+
+void inline call_run_widget(void* widget_obj)
+{
+    /*FreeRTOS expects a pointer to a function. C++ member functions, however are not pointers to a function
+    and there is no way to convert them to that. Therefore, this function calls the member function itself when freertos calls it.*/
+    static_cast<widget*>(widget_obj)->run_widget();
+}
 
 class clock_widget : public widget
 {
@@ -89,7 +99,7 @@ class snake_game_widget : public widget
         int tile_size_x;
         int tile_size_y;
 
-        grid* game_grid;
+        virtual_grid* game_grid;
 
         void draw_tile_map();
         

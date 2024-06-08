@@ -13,7 +13,7 @@
 #include "hagl_hal.h"
 #include "hagl.h"
 #include "string.h"
-#include "widgets.h"
+#include "widgets/widgets.h"
 
 #include "ds3231.h"
 
@@ -231,7 +231,6 @@ void input_events_handler_task(void* arg)
     
     input_event_t event; // Event type
     char event_id[32];
-    const char TAG[] = "input_events_handler_task";
 
     while(1){
         if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
