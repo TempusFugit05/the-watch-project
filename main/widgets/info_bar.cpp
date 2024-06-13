@@ -12,9 +12,9 @@ info_bar_widget::~info_bar_widget()
 {
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
-        hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
+        hagl_set_clip(display_handle, 0 ,0, DISPLAY_WIDTH, 20); // Set drawable area
         vTaskDelete(task_handle);
-        hagl_fill_rectangle_xyxy(display_handle, 0, 0, SCREEN_SIZE_X, 20, hagl_color(display_handle,0,0,0)); // Clear screen
+        hagl_fill_rectangle_xyxy(display_handle, 0, 0, DISPLAY_WIDTH, 20, hagl_color(display_handle,0,0,0)); // Clear screen
         xSemaphoreGive(display_mutex);
     } // Clear screen
 }
@@ -27,7 +27,7 @@ void info_bar_widget::run_widget()
     {
         if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
         {
-            hagl_set_clip(display_handle, 0 ,0, SCREEN_SIZE_X, 20); // Set drawable area
+            hagl_set_clip(display_handle, 0 ,0, DISPLAY_WIDTH, 20); // Set drawable area
             struct tm current_time;
             ds3231_get_datetime(rtc_handle, &current_time);
 
@@ -36,7 +36,7 @@ void info_bar_widget::run_widget()
                 snprintf(time_str, 32, "%02i:%02i:%02i",
                         current_time.tm_hour, current_time.tm_min, current_time.tm_sec);
                 mbstowcs(formatted_time_str, time_str, 32);
-                hagl_put_text(display_handle, formatted_time_str, (SCREEN_SIZE_X-strlen(time_str)*5)/2, 10, color, font6x9);
+                hagl_put_text(display_handle, formatted_time_str, (DISPLAY_WIDTH-strlen(time_str)*5)/2, 10, color, font6x9);
             }
             xSemaphoreGive(display_mutex);
 

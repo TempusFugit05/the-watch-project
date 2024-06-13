@@ -16,6 +16,7 @@
 #include "widgets/widgets.h"
 
 #include "ds3231.h"
+#include "input_event_types.h"
 
 #define LED_PIN             GPIO_NUM_2
 #define LED_PIN2            GPIO_NUM_25
@@ -41,14 +42,6 @@ ds3231_handle_t ds3231_dev_handle;
 gptimer_handle_t button_timer; // Timer for button software debounce
 
 i2c_master_bus_handle_t i2c_master_handle;
-
-typedef enum : uint8_t{
-    INIT_EVENT,
-    SHORT_PRESS_EVENT,
-    LONG_PRESS_EVENT,
-    SCROLL_UP_EVENT,
-    SCROLL_DOWN_EVENT,
-}input_event_t; // Input event flags for the input events queue
 
 typedef enum : uint8_t{
     SCREEN_FACES_PADDING_LOWER,
@@ -128,12 +121,12 @@ one of them will always change before the other when rotating clockwise and vise
 
         if (CLK_state != gpio_get_level(ENCODER_DT_PIN))
         {
-            event = SCROLL_UP_EVENT;
+            event = SCROLL_DOWN_EVENT;
             xQueueSendFromISR(input_event_queue, &event, &should_yield);
         }
         else
         {
-            event = SCROLL_DOWN_EVENT;
+            event = SCROLL_UP_EVENT;
             xQueueSendFromISR(input_event_queue, &event, &should_yield);
         }        
 
@@ -145,27 +138,45 @@ one of them will always change before the other when rotating clockwise and vise
     }
 }
 
+bool input_event_redirector(widget* active_widget, input_event_t event)
+{
+    /*This function is responsible for redirecting the input events to the relevant widgets*/
+    if (active_widget != NULL)
+    {
+        if (active_widget->get_input_requirements())
+        {
+            active_widget->set_input_event(event);
+            return true; // True if input is redirected
+        }
+    } // Check if the active widget requires inputs
+
+    return false; // False if input is not redirected
+}
+
 void main_screen_state_machine(input_event_t event)
 {
     /*This function handles the switching of ui elements upon input events*/
-
-    /*Delay amount to prevent switching faces too fast*/
-    static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(100); 
-    static unsigned long time_since_last_update = 0;
 
     /*Currently running ui elements*/
     static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
     static widget *widget_instance = NULL;    
     static info_bar_widget *info_bar = NULL; //new info_bar_widget(display, display_mutex, &ds3231_dev_handle);
 
-    unsigned long current_time = xTaskGetTickCount();
+    if (event == INIT_EVENT)
+    {
+        widget_instance = new snake_game_widget(display, display_mutex);
+        // widget_instance = new clock_widget(display, display_mutex, &ds3231_dev_handle);
+        current_face = SCREEN_CLOCK_FACE;
+    } // Initialize the clock widget upon startup
 
-    if (current_time - time_since_last_update >= face_switch_delay_ms)
-    { 
+
+
+    if (!input_event_redirector(widget_instance, event)) // Check if input needs redirecting to widget
+    {
         switch (event)
         {
         case SCROLL_UP_EVENT:
-            current_face = static_cast <main_screen_faces_t>(current_face + static_cast <main_screen_faces_t>(1));
+            current_face = static_cast<main_screen_faces_t>(current_face + static_cast <main_screen_faces_t>(1));
             if (current_face >= SCREEN_FACES_PADDING_UPPER)
             {
                 current_face = static_cast<main_screen_faces_t>(SCREEN_FACES_PADDING_LOWER + 1);
@@ -173,7 +184,7 @@ void main_screen_state_machine(input_event_t event)
             break;
         
         case SCROLL_DOWN_EVENT:
-            current_face = static_cast <main_screen_faces_t>(current_face - static_cast <main_screen_faces_t>(1));
+            current_face = static_cast<main_screen_faces_t>(current_face - static_cast <main_screen_faces_t>(1));
             if (current_face <= SCREEN_FACES_PADDING_LOWER)
             {
                 current_face = static_cast<main_screen_faces_t>(SCREEN_FACES_PADDING_UPPER - 1);
@@ -183,7 +194,7 @@ void main_screen_state_machine(input_event_t event)
         default:
             break;
         }
-
+        
         if (event == SCROLL_UP_EVENT || event == SCROLL_DOWN_EVENT)
         {
             switch (current_face)
@@ -211,16 +222,8 @@ void main_screen_state_machine(input_event_t event)
                 }
                 default:
                     break;
-            } // Create a demo widget and an info bar widget
-            time_since_last_update = current_time; // Update the time at switching
+            } // Create widget based on the current screen face
         }
-
-        if (event == INIT_EVENT)
-        {
-            hagl_window_t clip = {.x0 = 60, .y0 = 60, .x1 = 240, .y1 = 240};
-            widget_instance = new snake_game_widget(display, display_mutex, clip);
-            current_face = SCREEN_CLOCK_FACE;
-        } // Initialize the clock widget upon startup
     }
 }
 
@@ -232,40 +235,49 @@ void input_events_handler_task(void* arg)
     input_event_t event; // Event type
     char event_id[32];
 
+    /*Delay amount to prevent switching faces too fast*/
+    static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(50); 
+    static unsigned long time_since_last_update = 0;
+
     while(1){
         if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
         {
-            switch (event)
+            unsigned long current_time = xTaskGetTickCount();
+            if (current_time - time_since_last_update >= face_switch_delay_ms)
             {
-                case SHORT_PRESS_EVENT:
-                    static bool led_state = false;
-                    led_state = !led_state;
-                    gpio_set_level(LED_PIN, led_state);
-                    sprintf(event_id, "SHORT_PRESS_EVENT");
-                    break;
-                
-                case LONG_PRESS_EVENT:
-                    static bool led2_state = false;
-                    led2_state = !led2_state;
-                    gpio_set_level(LED_PIN2, led2_state);
-                    sprintf(event_id, "LONG_PRESS_EVENT");
-                    break;
-
-                case SCROLL_UP_EVENT:
-                    sprintf(event_id, "SCROLL_UP_EVENT");
-                    break;
-
-                case SCROLL_DOWN_EVENT:
-                    sprintf(event_id, "SCROLL_DOWN_EVENT");
-                    break;
+                switch (event)
+                {
+                    case SHORT_PRESS_EVENT:
+                        static bool led_state = false;
+                        led_state = !led_state;
+                        gpio_set_level(LED_PIN, led_state);
+                        sprintf(event_id, "SHORT_PRESS_EVENT");
+                        break;
                     
-                default:
-                    break;
-            }
+                    case LONG_PRESS_EVENT:
+                        static bool led2_state = false;
+                        led2_state = !led2_state;
+                        gpio_set_level(LED_PIN2, led2_state);
+                        sprintf(event_id, "LONG_PRESS_EVENT");
+                        break;
 
-        main_screen_state_machine(event);
+                    case SCROLL_UP_EVENT:
+                        sprintf(event_id, "SCROLL_UP_EVENT");
+                        break;
+
+                    case SCROLL_DOWN_EVENT:
+                        sprintf(event_id, "SCROLL_DOWN_EVENT");
+                        break;
+                        
+                    default:
+                        break;
+                }
+                main_screen_state_machine(event);
+                time_since_last_update = current_time; // Update the time at switching
+            }
+        // ESP_LOGI("input_event", "%s", event_id);
         }
-        ESP_LOGI("input_event", "%s", event_id);
+
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI(TAG, "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif

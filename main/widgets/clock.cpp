@@ -14,8 +14,8 @@ clock_widget::~clock_widget()
     if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
     {
         vTaskDelete(task_handle);
-        hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
-        hagl_fill_rectangle_xyxy(display_handle, 0, 20, SCREEN_SIZE_X, SCREEN_SIZE_Y, hagl_color(display_handle,0,0,0)); // Clear screen
+        hagl_set_clip(display_handle,0 ,20, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Set drawable area
+        hagl_fill_rectangle_xyxy(display_handle, 0, 20, DISPLAY_WIDTH, DISPLAY_HEIGHT, hagl_color(display_handle,0,0,0)); // Clear screen
         xSemaphoreGive(display_mutex);
     } // Clear screen
 }
@@ -43,7 +43,7 @@ void clock_widget::run_widget ()
         if (xSemaphoreTake(display_mutex, portMAX_DELAY))
         {
         
-            hagl_set_clip(display_handle,0 ,20, SCREEN_SIZE_X, SCREEN_SIZE_Y); // Set drawable area
+            hagl_set_clip(display_handle,0 ,20, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Set drawable area
             struct tm current_time;
             ds3231_get_datetime(rtc_handle, &current_time);
 
@@ -54,22 +54,23 @@ void clock_widget::run_widget ()
                 hours_text_cords_y = 20;
                 mbstowcs(formatted_str, time_str, 64);
                 hours_text_cords_y = segment_font.size_y;
-                hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, hours_text_cords_y, color, segment_font.font);
+                hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, hours_text_cords_y, color, segment_font.font);
             }
+            
             /*Display minutes*/
             if (current_time.tm_min != reference_time.tm_min || first_run)
             {
                 snprintf(time_str, 64, "%02i", current_time.tm_min);
                 mbstowcs(formatted_str, time_str, 64);
                 minutes_text_cords_y = hours_text_cords_y + 5 + segment_font.size_y;
-                hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, minutes_text_cords_y, color, segment_font.font); // Display string
+                hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, minutes_text_cords_y, color, segment_font.font); // Display string
             }
             
             /*Display seconds*/
             snprintf(time_str, 64, "%02i", current_time.tm_sec);
             mbstowcs(formatted_str, time_str, 64);
             seconds_text_cords_y = minutes_text_cords_y + 5 + segment_font.size_y;
-            hagl_put_text(display_handle, formatted_str, (SCREEN_SIZE_X - strlen(time_str)*segment_font.size_x)/2, seconds_text_cords_y, color, segment_font.font); // Display string
+            hagl_put_text(display_handle, formatted_str, (DISPLAY_WIDTH - strlen(time_str)*segment_font.size_x)/2, seconds_text_cords_y, color, segment_font.font); // Display string
             
             /*Display month day, month name and year*/
             if (current_time.tm_mday != reference_time.tm_mday || first_run)
@@ -80,7 +81,7 @@ void clock_widget::run_widget ()
                 current_time.tm_mday, month_str, current_time.tm_year);
                 mbstowcs(formatted_str, time_str, 64);
                 months_text_cords_y = seconds_text_cords_y + 5 + segment_font.size_y;
-                hagl_put_text(display_handle, formatted_str, SCREEN_SIZE_X/2 - strlen(time_str)*4, months_text_cords_y, color, font10x20.font); // Display string
+                hagl_put_text(display_handle, formatted_str, DISPLAY_WIDTH/2 - strlen(time_str)*4, months_text_cords_y, color, font10x20.font); // Display string
             }
 
             /*Display weekday*/
@@ -89,7 +90,7 @@ void clock_widget::run_widget ()
                 weekday_to_str(current_time.tm_wday, weekday_str);
                 mbstowcs(formatted_weekday, weekday_str, 10);
                 weekday_text_cords_y = months_text_cords_y + 5 + font10x20.size_y;
-                hagl_put_text(display_handle, formatted_weekday, SCREEN_SIZE_X/2 - strlen(weekday_str)*4, weekday_text_cords_y, color, font10x20.font); // Display string
+                hagl_put_text(display_handle, formatted_weekday, DISPLAY_WIDTH/2 - strlen(weekday_str)*4, weekday_text_cords_y, color, font10x20.font); // Display string
             }
             
             reference_time = current_time;
