@@ -81,10 +81,10 @@ direction_t calculate_move_direction(direction_t current_direction, input_event_
 
 void find_new_food_position(std::vector<coordinates>* segments, coordinates* food)
 {
-    food->x = (esp_random()/0x1000000)%GRID_WIDTH;
-    food->y = (esp_random()/0x1000000)%GRID_HEIGHT;
+    food->x = esp_random()%GRID_WIDTH;
+    food->y = esp_random()%GRID_HEIGHT;
 
-    for (int i = 0; i < segments->size(); i++)
+    for (int i = 0; i < segments->size()-1; i++)
     {
         if (food->x != (*segments)[i].x && food->y != (*segments)[i].y)
         {
@@ -102,7 +102,7 @@ void find_new_food_position(std::vector<coordinates>* segments, coordinates* foo
 void erase_snake_tail(std::vector<coordinates>* segments, hagl_color_t color, int tile_size, hagl_backend_t* display_handle)
 {
     coordinates current_pos{.x=(*segments).front().x, .y=(*segments).front().y};
-    static coordinates prev_pos{.x=(*segments).front().x+1, .y=(*segments).front().y+1};
+    static coordinates prev_pos{.x=(*segments).front().x+1, .y=(*segments).front().y+1}; // Initialized like that to guarantee update on first run
 
     if (prev_pos.x != current_pos.x || prev_pos.y != current_pos.y)
     {
@@ -125,6 +125,24 @@ void sort_segments(std::vector<coordinates>* segments, coordinates prev_head_cor
         prev_head_cords.x = temp_pos_x;
         prev_head_cords.y = temp_pos_y;
     }
+    ESP_LOGI("", "%i, %i", (*segments).front().x, (*segments).front().y);
+}
+
+bool check_self_collisions(std::vector<coordinates>* segments)
+{
+
+    coordinates head_pos{.x=(*segments).back().x, .y=(*segments).back().y};
+
+    for (int i = 0; i < (*segments).size()-2; i++)
+    {
+        coordinates segment_pos{.x=(*segments)[i].x, .y=(*segments)[i].y};
+        if (head_pos.x == segment_pos.x && head_pos.y == segment_pos.y)
+        {
+            return true; // Return true if there was a collision
+        }
+    }
+
+    return false; // Return false if no collision detected
 }
 
 snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex) :
@@ -172,21 +190,22 @@ void snake_game_widget::run_widget()
         while (!is_game_over)
         {
             move_direction = calculate_move_direction(move_direction, input_event);
-            input_event = INIT_EVENT;
+            input_event = INIT_EVENT; // Reset input
+
+            head.x = snake_segments.back().x;
+            head.y = snake_segments.back().y;
 
             if (snake_segments.back().x == food.x && snake_segments.back().y == food.y)
             {
                 coordinates new_segment{.x=snake_segments.back().x,.y=snake_segments.back().y};
                 snake_segments.push_back(new_segment);
                 find_new_food_position(&snake_segments, &food);
+                sort_segments(&snake_segments, head);
             }
-            
-            head.x = snake_segments.back().x;
-            head.y = snake_segments.back().y;
-
+        
             calculate_head_pos(&snake_segments, move_direction);
 
-            if (snake_segments[0].x == GRID_WIDTH || snake_segments[0].x < 0 || snake_segments[0].y == GRID_HEIGHT || snake_segments[0].y < 0)
+            if (snake_segments.back().x == GRID_WIDTH || snake_segments.back().x < 0 || snake_segments.back().y == GRID_HEIGHT || snake_segments.back().y < 0)
             {
                 is_game_over = true;
             }
@@ -198,6 +217,11 @@ void snake_game_widget::run_widget()
                 erase_snake_tail(&snake_segments, background_color, tile_size, display_handle);
 
                 sort_segments(&snake_segments, head);
+
+                if (check_self_collisions(&snake_segments))
+                {
+                    is_game_over = true;
+                }
 
                 DRAW_TILE(snake_segments.back().x*tile_size, snake_segments.back().y*tile_size, snake_color)
             }
