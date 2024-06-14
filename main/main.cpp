@@ -406,9 +406,7 @@ extern "C" void app_main(void)
     setup_i2c_master();
 
     // Display setup
-    hagl_backend_t* display_pointer = hagl_init();
-    if (display_pointer == NULL){ESP_LOGE("main_task", "Could not allocate memory for the display!"); abort();}
-    display = display_pointer;
+    display = hagl_init();
     hagl_clear(display);
 
     setup_gpio(); // Set up the gpio pins for inputs
