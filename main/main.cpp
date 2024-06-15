@@ -157,14 +157,20 @@ void main_screen_state_machine(input_event_t event)
 {
     /*This function handles the switching of ui elements upon input events*/
 
+    const int INFO_BAR_WIDTH = DISPLAY_WIDTH;
+    const int INFO_BAR_HEIGHT = 20;
+
+    hagl_window_t info_bar_clip = {.x0=0, .y0=0, .x1=INFO_BAR_WIDTH, .y1=INFO_BAR_HEIGHT};
+    hagl_window_t widget_clip = {.x0=0, .y0=INFO_BAR_HEIGHT, .x1=DISPLAY_WIDTH, .y1=DISPLAY_HEIGHT};
+
     /*Currently running ui elements*/
     static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
     static widget *widget_instance = NULL;    
-    static info_bar_widget *info_bar = NULL; //new info_bar_widget(display, display_mutex, &ds3231_dev_handle);
-
+    static info_bar_widget *info_bar = new info_bar_widget(display, display_mutex, &ds3231_dev_handle, info_bar_clip);
+    
     if (event == INIT_EVENT)
     {
-        widget_instance = new snake_game_widget(display, display_mutex);
+        widget_instance = new snake_game_widget(display, display_mutex, widget_clip);
         // widget_instance = new clock_widget(display, display_mutex, &ds3231_dev_handle);
         current_face = SCREEN_CLOCK_FACE;
     } // Initialize the clock widget upon startup
@@ -217,7 +223,10 @@ void main_screen_state_machine(input_event_t event)
                         delete widget_instance;
                     }
                     widget_instance = new test_widget(display, display_mutex);
-                    info_bar = new info_bar_widget(display, display_mutex, &ds3231_dev_handle);
+                    if (info_bar != NULL)
+                    {
+                        info_bar = new info_bar_widget(display, display_mutex, &ds3231_dev_handle, info_bar_clip);
+                    }
                     break;
                 }
                 default:
@@ -235,16 +244,9 @@ void input_events_handler_task(void* arg)
     input_event_t event; // Event type
     char event_id[32];
 
-    /*Delay amount to prevent switching faces too fast*/
-    static const unsigned long face_switch_delay_ms = pdMS_TO_TICKS(50); 
-    static unsigned long time_since_last_update = 0;
-
     while(1){
         if(xQueueReceive(input_event_queue, &event, portMAX_DELAY)) // Wait for an event in the queue
         {
-            unsigned long current_time = xTaskGetTickCount();
-            if (current_time - time_since_last_update >= face_switch_delay_ms)
-            {
                 switch (event)
                 {
                     case SHORT_PRESS_EVENT:
@@ -273,8 +275,6 @@ void input_events_handler_task(void* arg)
                         break;
                 }
                 main_screen_state_machine(event);
-                time_since_last_update = current_time; // Update the time at switching
-            }
         // ESP_LOGI("input_event", "%s", event_id);
         }
 

@@ -95,13 +95,14 @@ class info_bar_widget : public widget
     private:
         tm reference_time;
         ds3231_handle_t* rtc_handle;
+        hagl_window_t clip;
 
         char time_str[32];
         wchar_t formatted_time_str[32];
         bool first_run = true;
         
     public:
-        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc);
+        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc, hagl_window_t clip);
         ~info_bar_widget() override;
         void run_widget() override;
 };
@@ -118,8 +119,6 @@ class test_widget : public widget
 class snake_game_widget : public widget
 {
     private:
-        
-
         hagl_window_t clip;
 
         int tile_size_x;
@@ -128,7 +127,7 @@ class snake_game_widget : public widget
         void draw_tile_map();
         
     public:
-        snake_game_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex);
+        snake_game_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t clip);
         ~snake_game_widget() override;
         void run_widget() override;
 };

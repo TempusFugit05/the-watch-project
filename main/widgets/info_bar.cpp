@@ -1,8 +1,10 @@
 #include "widgets.h"
-#include "./font6x9.h"
+#include "fonts.h"
 #include <cstring>
 
-info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc) : widget(display, display_mutex), rtc_handle(rtc)
+#define FONT font6x9
+
+info_bar_widget::info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc, hagl_window_t clip) : widget(display, display_mutex), rtc_handle(rtc), clip(clip)
 {
     ds3231_get_datetime(rtc_handle, &reference_time);
     xTaskCreate(call_run_widget, "info_bar", 2048, this, 3, &task_handle); // Create task to call run_widget
@@ -12,7 +14,7 @@ info_bar_widget::~info_bar_widget()
 {
     if (xSemaphoreTake(display_mutex, portMAX_DELAY))
     {
-        hagl_set_clip(display_handle, 0 ,0, DISPLAY_WIDTH, 20); // Set drawable area
+        hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1); // Set drawable area
         vTaskDelete(task_handle);
         hagl_fill_rectangle_xyxy(display_handle, 0, 0, DISPLAY_WIDTH, 20, hagl_color(display_handle,0,0,0)); // Clear screen
         xSemaphoreGive(display_mutex);
@@ -27,7 +29,7 @@ void info_bar_widget::run_widget()
     {
         if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
         {
-            hagl_set_clip(display_handle, 0 ,0, DISPLAY_WIDTH, 20); // Set drawable area
+            hagl_set_clip(display_handle, clip.x0, clip.y0, clip.x1, clip.y1); // Set drawable area
             struct tm current_time;
             ds3231_get_datetime(rtc_handle, &current_time);
 
@@ -36,7 +38,7 @@ void info_bar_widget::run_widget()
                 snprintf(time_str, 32, "%02i:%02i:%02i",
                         current_time.tm_hour, current_time.tm_min, current_time.tm_sec);
                 mbstowcs(formatted_time_str, time_str, 32);
-                hagl_put_text(display_handle, formatted_time_str, (DISPLAY_WIDTH-strlen(time_str)*5)/2, 10, color, font6x9);
+                hagl_put_text(display_handle, formatted_time_str, (clip.x1-clip.x0-strlen(time_str)*FONT.size_x)/2, clip.y1/2, color, FONT.font_data);
             }
             xSemaphoreGive(display_mutex);
 
