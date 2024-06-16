@@ -8,11 +8,23 @@
 #include <vector>
 #include <string.h>
 
-#define FONT font6x9
-#define DRAW_SCORE(full_clip, game_clip, text, formatted_text, display, score) snprintf(text, sizeof(text), "SCORE: %03i", score); mbstowcs(formatted_text, text, 16); hagl_put_text(display_handle, formatted_text, game_clip.x0, clip.y0+(game_clip.y0-clip.y0)-FONT.size_y-1, hagl_color(display_handle,255,255,255), FONT.font_data);
+// #define CHECK_TASK_SIZES
 
-#define GRID_WIDTH  15
-#define GRID_HEIGHT 15
+#define GAME_ITERATIONS_PER_SECOND 8 // Game speed as in iterations per second
+#define REFRESH_RATE 1000/GAME_ITERATIONS_PER_SECOND
+
+#define BUFFER_SIZE 32
+#define DRAW_SCORE(full_clip, game_clip, text, formatted_text, display, score) snprintf(text, BUFFER_SIZE, "SCORE: %03i", score);\
+                    mbstowcs(formatted_text, text, BUFFER_SIZE);\
+                    hagl_put_text(display_handle, formatted_text, game_clip.x0,\
+                    clip.y0+(game_clip.y0-clip.y0)-font6x9.size_y-1, hagl_color(display_handle,255,255,255),\
+                    font6x9.font_data);
+
+
+
+#define GRID_WIDTH  20
+#define GRID_HEIGHT 20
+#define INITIAL_SNAKE_SIZE 4
 #define DRAW_TILE(pos_x, pos_y, size, clip, color) hagl_fill_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, size, size, color);
 #define DRAW_TILE_WITH_OUTLINE(pos_x, pos_y, size, clip, color, outline_color) hagl_fill_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, tile_size, tile_size, color); hagl_draw_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, tile_size, tile_size, outline_color);
 
@@ -86,6 +98,12 @@ direction_t calculate_move_direction(direction_t current_direction, input_event_
     return current_direction;
 }
 
+void draw_string(char* str, wchar_t* formatted_str, int x, int y, hagl_backend_t* display, hagl_color_t color, font input_font) 
+{
+    mbstowcs(formatted_str, str, BUFFER_SIZE);
+    hagl_put_text(display, formatted_str, x, y, color, input_font.font_data);
+}
+
 void draw_eyes(hagl_backend_t* display_handle, std::vector<coordinates>* segments, int tile_size, hagl_window_t clip, hagl_color_t eye_color, direction_t direction)
 {
     // AWFUL!!!!!!!!!!!
@@ -118,47 +136,50 @@ void clean_segment_lines(hagl_backend_t* display_handle, std::vector<coordinates
     {
         coordinates current_seg={.x=(*segments)[i].x, .y=(*segments)[i].y};
         coordinates prev_seg={.x=(*segments)[i-1].x, .y=(*segments)[i-1].y};
+        coordinates pos={.x=current_seg.x*tile_size+clip.x0, .y=current_seg.y*tile_size+clip.y0};
+
         if (current_seg.x - prev_seg.x == 1)
         {
-            hagl_draw_vline_xyh(display_handle, current_seg.x*tile_size+clip.x0, current_seg.y*tile_size+clip.y0+1, tile_size-2, snake_color);
-            hagl_draw_vline_xyh(display_handle, current_seg.x*tile_size+clip.x0-1, current_seg.y*tile_size+clip.y0+1, tile_size-2, snake_color);    
+            hagl_draw_vline_xyh(display_handle, pos.x, pos.y+1, tile_size-2, snake_color);
+            hagl_draw_vline_xyh(display_handle, pos.x-1, pos.y+1, tile_size-2, snake_color);    
         }
         else if (current_seg.x - prev_seg.x == -1)
         {
-            hagl_draw_vline_xyh(display_handle, current_seg.x*tile_size+tile_size+clip.x0, current_seg.y*tile_size+clip.y0+1, tile_size-2, snake_color);
-            hagl_draw_vline_xyh(display_handle, current_seg.x*tile_size+tile_size+clip.x0-1, current_seg.y*tile_size+clip.y0+1, tile_size-2, snake_color);
+            hagl_draw_vline_xyh(display_handle, pos.x+tile_size, pos.y+1, tile_size-2, snake_color);
+            hagl_draw_vline_xyh(display_handle, pos.x+tile_size-1, pos.y+1, tile_size-2, snake_color);
         }
         else if (current_seg.y - prev_seg.y == 1)
         {
-            hagl_draw_hline_xyw(display_handle, current_seg.x*tile_size+clip.x0+1, current_seg.y*tile_size+clip.y0, tile_size-2, snake_color);
-            hagl_draw_hline_xyw(display_handle, current_seg.x*tile_size+clip.x0+1, current_seg.y*tile_size+clip.y0-1, tile_size-2, snake_color);
+            hagl_draw_hline_xyw(display_handle, pos.x+1, pos.y, tile_size-2, snake_color);
+            hagl_draw_hline_xyw(display_handle, pos.x+1, pos.y-1, tile_size-2, snake_color);
         }
         else
         {
-            hagl_draw_hline_xyw(display_handle, current_seg.x*tile_size+clip.x0+1, (current_seg.y+1)*tile_size+clip.y0, tile_size-2, snake_color);
-            hagl_draw_hline_xyw(display_handle, current_seg.x*tile_size+clip.x0+1, (current_seg.y+1)*tile_size+clip.y0-1, tile_size-2, snake_color);
+            hagl_draw_hline_xyw(display_handle, pos.x+1, pos.y+tile_size, tile_size-2, snake_color);
+            hagl_draw_hline_xyw(display_handle, pos.x+1, pos.y+tile_size-1, tile_size-2, snake_color);
         }
     }
 
     // Clear tail line
     coordinates current_seg = {.x=(*segments).front().x, .y=(*segments).front().y};
     coordinates next_seg = {.x=(*segments)[1].x, .y=(*segments)[1].y};
+    coordinates pos={.x=current_seg.x*tile_size+clip.x0, .y=current_seg.y*tile_size+clip.y0};
 
     if (current_seg.x - next_seg.x == 1)
     {
-        hagl_draw_vline_xyh(display_handle, current_seg.x*tile_size+clip.x0, current_seg.y*tile_size+clip.y0+1, tile_size-2, snake_color);
+        hagl_draw_vline_xyh(display_handle, pos.x, pos.y+1, tile_size-2, snake_color);
     }
     else if (current_seg.x - next_seg.x == -1)
     {
-        hagl_draw_vline_xyh(display_handle, (current_seg.x+1)*tile_size+clip.x0-1, current_seg.y*tile_size+clip.y0+1, tile_size-2, snake_color);
+        hagl_draw_vline_xyh(display_handle, pos.x+tile_size-1, pos.y+1, tile_size-2, snake_color);
     }
     else if (current_seg.y - next_seg.y == 1)
     {
-        hagl_draw_hline_xyw(display_handle, current_seg.x*tile_size+clip.x0+1, current_seg.y*tile_size+clip.y0, tile_size-2, snake_color);
+        hagl_draw_hline_xyw(display_handle, pos.x+1, pos.y, tile_size-2, snake_color);
     }
     else
     {
-        hagl_draw_hline_xyw(display_handle, current_seg.x*tile_size+clip.x0+1, (current_seg.y+1)*tile_size+clip.y0-1, tile_size-2, snake_color);
+        hagl_draw_hline_xyw(display_handle, pos.x+1, pos.y+tile_size-1, tile_size-2, snake_color);
     }
 }
 
@@ -222,16 +243,25 @@ snake_game_widget::~snake_game_widget()
 
 void snake_game_widget::run_widget()
 {   
-    uint16_t tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0)/GRID_HEIGHT;
+    uint16_t tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? 
+    (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0)/GRID_HEIGHT;
+
     uint16_t clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size; // Offset of the pixles that can't be fitted inside a tile
     uint16_t clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
 
-    // Making sure there is enough space above the playable area to draw text and border
-    if (clip_offset_y < FONT.size_y+2)
+    if (clip_offset_x < 2)
     {
-        clip_offset_y+=FONT.size_y+2-clip_offset_y;
-        tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0 - clip_offset_y) ? 
-                    (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0 - clip_offset_y)/GRID_HEIGHT;
+        tile_size = ((clip.x1-clip.x0 - 2 + clip_offset_x)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? 
+        (clip.x1-clip.x0 - 2 + clip_offset_x)/GRID_WIDTH : (clip.y1-clip.y0)/GRID_HEIGHT;
+        clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size; // Offset of the pixles that can't be fitted inside a tile
+        clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
+    }// Making sure there is enough space to draw the boundrary
+
+    // Making sure there is enough space above the playable area to draw text
+    if (clip_offset_y < font6x9.size_y+2)
+    {
+        tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0 - font6x9.size_y+2 + clip_offset_y) ? 
+                    (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0 - font6x9.size_y+2 + clip_offset_y)/GRID_HEIGHT;
         clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size;
         clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
     }
@@ -242,28 +272,34 @@ void snake_game_widget::run_widget()
                             .y1= static_cast<uint16_t>(clip.y1 - 1)}; // Actual playable area
     
     int score = 0;
-    char text[16];
-    wchar_t formatted_text[16]; // Formatted text to work with hagl library
+    char text[BUFFER_SIZE];
+    wchar_t formatted_text[BUFFER_SIZE]; // Formatted text to work with hagl library
     direction_t move_direction = DIRECTION_RIGHT;
 
     hagl_color_t snake_color = hagl_color(display_handle, 41, 233, 99);
     hagl_color_t outline_color = hagl_color(display_handle, 255, 55, 169);
     hagl_color_t food_color = hagl_color(display_handle, 0, 0, 255);
     hagl_color_t background_color = hagl_color(display_handle, 0, 0, 0);
+    hagl_color_t text_color = hagl_color(display_handle, 255, 255 ,255);
 
     bool is_game_over = false;
     bool new_segment_created = false;
     coordinates food;
+    coordinates head;
+    std::vector<coordinates> snake_segments;
+    for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
+    {
+        snake_segments.push_back(head);
+    }
 
 game_setup:
     // Create initial segments
-    coordinates head {.x = GRID_WIDTH/2-3, .y = GRID_HEIGHT/2-3};
-    std::vector<coordinates> snake_segments{head};
-    head.x += 1;
-    snake_segments.push_back(head);
-    head.x += 1;
-    snake_segments.push_back(head);
-
+    head = {.x = GRID_WIDTH/2-INITIAL_SNAKE_SIZE, .y = GRID_HEIGHT/2};
+    for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
+    {
+        snake_segments[i]=head;
+        head.x += 1;
+    }
 
     find_new_food_position(&snake_segments, &food);    
 
@@ -274,7 +310,7 @@ game_setup:
         
         DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
         
-        for (int i = 1; i < snake_segments.size(); i++)
+        for (int i = 0; i < snake_segments.size(); i++)
         {
             DRAW_TILE_WITH_OUTLINE(snake_segments[i].x, snake_segments[i].y, tile_size, game_clip, snake_color, outline_color);
         }
@@ -288,21 +324,34 @@ game_setup:
     {
         if (input_event == SHORT_PRESS_EVENT)
         {
+            // Reset game stats
             is_game_over = false;
             input_event = INIT_EVENT;
+            move_direction = DIRECTION_RIGHT;
+            score = 0;
 
+            DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
+
+            // Shrink snake to initial size
+            snake_segments.resize(INITIAL_SNAKE_SIZE);
+
+            // Erase game screen
             START_DRAW(display_handle, clip, display_mutex)
                 hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, background_color);
             END_DRAW(display_mutex)
-            snake_segments.~vector();
             
             goto game_setup;
-        }
+        } // Restart game
         
         while (!is_game_over)
-        {            
-            move_direction = calculate_move_direction(move_direction, input_event);
-            input_event = INIT_EVENT; // Reset input
+        {
+            uint64_t time_at_start = esp_timer_get_time(); // Get time at start of iteration
+
+            if(input_event!=INIT_EVENT)
+            {
+                move_direction = calculate_move_direction(move_direction, input_event);
+                input_event = INIT_EVENT; // Reset input
+            }
 
             head.x = snake_segments.back().x; // Reference head position to sort the body later
             head.y = snake_segments.back().y;
@@ -325,19 +374,20 @@ game_setup:
                 calculate_head_pos(&snake_segments, move_direction);
 
                 if (snake_segments.back().x == GRID_WIDTH || snake_segments.back().x < 0 ||
-                    snake_segments.back().y == GRID_HEIGHT || snake_segments.back().y < 0 || check_self_collisions(&snake_segments))
+                    snake_segments.back().y == GRID_HEIGHT || snake_segments.back().y < 0 ||
+                    check_self_collisions(&snake_segments))
                 {
                     is_game_over = true;
                     xSemaphoreGive(display_mutex); // Give back control of the display
-                    break;
-                } // Checl if snake crashed into the wall
+                } // Check if snake crashed into the wall
+
                 if (!new_segment_created)
                 {
                     DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
                     sort_segments(&snake_segments, head);
                     DRAW_TILE_WITH_OUTLINE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, snake_color, outline_color); // Draw snake head
                     hagl_draw_rectangle_xywh(display_handle, snake_segments.front().x*tile_size+game_clip.x0, snake_segments.front().y*tile_size+game_clip.y0, tile_size, tile_size, outline_color); // Draw tail outline to close snake shape
-                }
+                } // Draw snake elements
 
                 DRAW_TILE_WITH_OUTLINE(snake_segments.back().x, snake_segments.back().y, tile_size, game_clip, snake_color, outline_color) // Draw head
                 DRAW_TILE_WITH_OUTLINE(snake_segments[snake_segments.size()-2].x, snake_segments[snake_segments.size()-2].y, tile_size, game_clip, snake_color, outline_color) // Clear previous segment
@@ -345,10 +395,39 @@ game_setup:
                 clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color); // Clear leftover outlines inside the snake body
                 draw_eyes(display_handle, &snake_segments, tile_size, game_clip, background_color, move_direction);
                 new_segment_created = false;
+                if (is_game_over)
+                {
+                    int text_x, text_y;
+                    snprintf(text, BUFFER_SIZE, "GAME OVER!");
+                    text_x = (clip.x1 - clip.x0 - strlen(text)*font9x18b.size_x)/2;
+                    text_y = (clip.y1 - clip.y0)/2;
+                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, font9x18b);
 
+                    snprintf(text, BUFFER_SIZE, "PLAY AGAIN?");
+                    text_x = (clip.x1 - clip.x0 - strlen(text)*font9x18b.size_x)/2;
+                    text_y = (clip.y1 - clip.y0)/2+font9x18b.size_y;
+                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, font9x18b);
+                }
+                
             END_DRAW(display_mutex)
-            vTaskDelay(pdMS_TO_TICKS(200));
+            
+            #ifdef CHECK_TASK_SIZES
+            ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
+            #endif
+
+            uint64_t iteration_time = (esp_timer_get_time() - time_at_start)/10000;
+            
+            if (iteration_time < REFRESH_RATE)
+            {
+                vTaskDelay(pdMS_TO_TICKS(REFRESH_RATE-iteration_time));
+            }
+
+            else
+            {
+                vTaskDelay(pdMS_TO_TICKS(REFRESH_RATE));
+            }
+            
         }
-    vTaskDelay(pdMS_TO_TICKS(250));
+    vTaskDelay(pdMS_TO_TICKS(200));
     } 
 }

@@ -110,7 +110,7 @@ Since the contacts connected to the pins are offset by 90 degrees inside the enc
 one of them will always change before the other when rotating clockwise and vise-versa
 */
     bool CLK_state = gpio_get_level(ENCODER_CLK_PIN);
-    static bool reference_CLK_state = false;
+    static bool reference_CLK_state = gpio_get_level(ENCODER_CLK_PIN);
     
     input_event_t event;
     BaseType_t should_yield = pdFALSE;
