@@ -1,35 +1,46 @@
 #include "widgets.h"
+#include "fonts.h"
+
+#include "nvs_flash.h"
+#include "nvs.h"
+
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "fonts.h"
 #include <vector>
 #include <string.h>
+#include "math.h"
 
 // #define CHECK_TASK_SIZES
 
-#define GAME_ITERATIONS_PER_SECOND 8 // Game speed as in iterations per second
-#define REFRESH_RATE 1000/GAME_ITERATIONS_PER_SECOND
+#define GRID_WIDTH  15
+#define GRID_HEIGHT 15
+
+#define SCORE_FONT font6x9
+#define DIALOGUE_FONT font9x18b
+
+#define BASE_GAME_ITERATIONS_PER_SECOND 5 // Game speed as in iterations per second
+#define MAX_GAME_ITERATIONS_PER_SECOND 12
+#define SCORE_FOR_MAX_SPEED sqrt(GRID_WIDTH*GRID_HEIGHT)
+
+#define BASE_REFRESH_RATE 1000/BASE_GAME_ITERATIONS_PER_SECOND
+#define MAX_REFRESH_RATE 1000/MAX_GAME_ITERATIONS_PER_SECOND
+
 
 #define BUFFER_SIZE 32
 #define DRAW_SCORE(full_clip, game_clip, text, formatted_text, display, score) snprintf(text, BUFFER_SIZE, "SCORE: %03i", score);\
                     mbstowcs(formatted_text, text, BUFFER_SIZE);\
                     hagl_put_text(display_handle, formatted_text, game_clip.x0,\
-                    clip.y0+(game_clip.y0-clip.y0)-font6x9.size_y-1, hagl_color(display_handle,255,255,255),\
-                    font6x9.font_data);
+                    clip.y0+(game_clip.y0-clip.y0)-SCORE_FONT.size_y-1, hagl_color(display_handle,255,255,255),\
+                    SCORE_FONT.font_data);
 
 
 
-#define GRID_WIDTH  20
-#define GRID_HEIGHT 20
 #define INITIAL_SNAKE_SIZE 4
 #define DRAW_TILE(pos_x, pos_y, size, clip, color) hagl_fill_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, size, size, color);
-#define DRAW_TILE_WITH_OUTLINE(pos_x, pos_y, size, clip, color, outline_color) hagl_fill_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, tile_size, tile_size, color); hagl_draw_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, tile_size, tile_size, outline_color);
-
-#define START_DRAW(display, clip, mutex) if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY))){hagl_set_clip(display_handle,clip.x0,clip.y0,clip.y1,clip.x1); // Set drawable area
-#define END_DRAW(mutex) xSemaphoreGive(mutex);}
+#define DRAW_TILE_WITH_OUTLINE(pos_x, pos_y, size, clip, color, outline_color) DRAW_TILE(pos_x, pos_y, size, clip, color) hagl_draw_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, tile_size, tile_size, outline_color);
 
 typedef enum : uint8_t 
 {
@@ -229,20 +240,8 @@ bool check_self_collisions(std::vector<coordinates>* segments)
     return false; // Return false if no collision detected
 }
 
-snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t clip) :
-                                    widget(widget_display, display_mutex), clip(clip)
+hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
 {
-    widget::requires_inputs = true;
-    xTaskCreate(call_run_widget, "test_widget", 4096, this, 3, &task_handle); // Create task to call run_widget
-}
-
-snake_game_widget::~snake_game_widget()
-{
-    vTaskDelete(task_handle);
-}
-
-void snake_game_widget::run_widget()
-{   
     uint16_t tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? 
     (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0)/GRID_HEIGHT;
 
@@ -258,20 +257,44 @@ void snake_game_widget::run_widget()
     }// Making sure there is enough space to draw the boundrary
 
     // Making sure there is enough space above the playable area to draw text
-    if (clip_offset_y < font6x9.size_y+2)
+    if (clip_offset_y < SCORE_FONT.size_y+2)
     {
-        tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0 - font6x9.size_y+2 + clip_offset_y) ? 
-                    (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0 - font6x9.size_y+2 + clip_offset_y)/GRID_HEIGHT;
+        tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0 - SCORE_FONT.size_y+2 + clip_offset_y) ? 
+                    (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0 - SCORE_FONT.size_y+2 + clip_offset_y)/GRID_HEIGHT;
         clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size;
         clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
     }
 
-    hagl_window_t game_clip{.x0= static_cast<uint16_t>(clip.x0 + clip_offset_x / 2 + 1),
-                            .y0= static_cast<uint16_t>(clip.y0 + clip_offset_y - 1),
-                            .x1= static_cast<uint16_t>(clip.x1 - clip_offset_x / 2 - 1),
+    hagl_window_t final_clip{.x0= static_cast<uint16_t>(clip.x0 + 1 + clip_offset_x / 2),
+                            .y0= static_cast<uint16_t>(clip.y0 + clip_offset_y + 1),
+                            .x1= static_cast<uint16_t>(clip.x1 - 1 - clip_offset_x / 2),
                             .y1= static_cast<uint16_t>(clip.y1 - 1)}; // Actual playable area
-    
+
+    *tile_size_ptr = tile_size;
+    return final_clip;
+
+}
+
+snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t clip) :
+                                    widget(widget_display, display_mutex), clip(clip)
+{
+    widget::requires_inputs = true;
+    xTaskCreate(call_run_widget, "test_widget", 4096, this, 3, &task_handle); // Create task to call run_widget
+}
+
+snake_game_widget::~snake_game_widget()
+{
+    vTaskDelete(task_handle);
+}
+
+void snake_game_widget::run_widget()
+{   
+    uint16_t tile_size;
+
+    hagl_window_t game_clip = get_game_clip(clip, &tile_size);
+
     int score = 0;
+    uint16_t delay_amount = BASE_REFRESH_RATE;
     char text[BUFFER_SIZE];
     wchar_t formatted_text[BUFFER_SIZE]; // Formatted text to work with hagl library
     direction_t move_direction = DIRECTION_RIGHT;
@@ -286,34 +309,34 @@ void snake_game_widget::run_widget()
     bool new_segment_created = false;
     coordinates food;
     coordinates head;
+
     std::vector<coordinates> snake_segments;
     for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
     {
         snake_segments.push_back(head);
-    }
+    } // Initialize snake body
 
 game_setup:
-    // Create initial segments
     head = {.x = GRID_WIDTH/2-INITIAL_SNAKE_SIZE, .y = GRID_HEIGHT/2};
     for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
     {
         snake_segments[i]=head;
         head.x += 1;
-    }
+    } // Set initial segment positions
 
     find_new_food_position(&snake_segments, &food);    
 
     START_DRAW(display_handle, clip, display_mutex)
 
-        hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x0+GRID_WIDTH*tile_size+1,
-        clip.y1-1, hagl_color(display_handle,255,255,255)); // Draw boundrary
+        hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x1+2,
+        game_clip.y1-1, hagl_color(display_handle,255,255,255)); // Draw boundrary
         
         DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
         
         for (int i = 0; i < snake_segments.size(); i++)
         {
             DRAW_TILE_WITH_OUTLINE(snake_segments[i].x, snake_segments[i].y, tile_size, game_clip, snake_color, outline_color);
-        }
+        } // Draw snake segments
 
         clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color);
         DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
@@ -328,6 +351,7 @@ game_setup:
             is_game_over = false;
             input_event = INIT_EVENT;
             move_direction = DIRECTION_RIGHT;
+            delay_amount = BASE_REFRESH_RATE;
             score = 0;
 
             DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
@@ -336,7 +360,7 @@ game_setup:
             snake_segments.resize(INITIAL_SNAKE_SIZE);
 
             // Erase game screen
-            START_DRAW(display_handle, clip, display_mutex)
+            START_DRAW(display_handle, game_clip, display_mutex)
                 hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, background_color);
             END_DRAW(display_mutex)
             
@@ -356,7 +380,7 @@ game_setup:
             head.x = snake_segments.back().x; // Reference head position to sort the body later
             head.y = snake_segments.back().y;
 
-            START_DRAW(display_handle, clip, display_mutex)
+            START_DRAW(display_handle, game_clip, display_mutex)
 
                 if (snake_segments.back().x == food.x && snake_segments.back().y == food.y)
                 {
@@ -367,7 +391,16 @@ game_setup:
                     DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
                  
                     score++;
+                    
+                    SET_CLIP(display_handle, clip);
                     DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
+                    SET_CLIP(display_handle, game_clip);
+
+                    if (score < SCORE_FOR_MAX_SPEED)
+                    {
+                        delay_amount -= (BASE_REFRESH_RATE - MAX_REFRESH_RATE)/SCORE_FOR_MAX_SPEED;
+                    }
+                    
                     new_segment_created = true;
                 } // Check if the snake ate the food
 
@@ -395,18 +428,19 @@ game_setup:
                 clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color); // Clear leftover outlines inside the snake body
                 draw_eyes(display_handle, &snake_segments, tile_size, game_clip, background_color, move_direction);
                 new_segment_created = false;
+                
                 if (is_game_over)
                 {
                     int text_x, text_y;
                     snprintf(text, BUFFER_SIZE, "GAME OVER!");
-                    text_x = (clip.x1 - clip.x0 - strlen(text)*font9x18b.size_x)/2;
+                    text_x = (clip.x1 - clip.x0 - strlen(text)*DIALOGUE_FONT.size_x)/2;
                     text_y = (clip.y1 - clip.y0)/2;
-                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, font9x18b);
+                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
 
                     snprintf(text, BUFFER_SIZE, "PLAY AGAIN?");
-                    text_x = (clip.x1 - clip.x0 - strlen(text)*font9x18b.size_x)/2;
-                    text_y = (clip.y1 - clip.y0)/2+font9x18b.size_y;
-                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, font9x18b);
+                    text_x = (clip.x1 - clip.x0 - strlen(text)*DIALOGUE_FONT.size_x)/2;
+                    text_y = (clip.y1 - clip.y0)/2+DIALOGUE_FONT.size_y;
+                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
                 }
                 
             END_DRAW(display_mutex)
@@ -415,16 +449,16 @@ game_setup:
             ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
             #endif
 
-            uint64_t iteration_time = (esp_timer_get_time() - time_at_start)/10000;
+            uint32_t iteration_time = (esp_timer_get_time() - time_at_start)/10000;
             
-            if (iteration_time < REFRESH_RATE)
+            if (iteration_time < delay_amount)
             {
-                vTaskDelay(pdMS_TO_TICKS(REFRESH_RATE-iteration_time));
+                vTaskDelay(pdMS_TO_TICKS(delay_amount-iteration_time));
             }
 
             else
             {
-                vTaskDelay(pdMS_TO_TICKS(REFRESH_RATE));
+                vTaskDelay(pdMS_TO_TICKS(delay_amount));
             }
             
         }

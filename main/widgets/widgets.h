@@ -3,14 +3,15 @@
 
 #include <ctime>
 
-#include "./hagl_hal.h"
-#include "./hagl.h"
+#include "hagl_hal.h"
+#include "hagl.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "ds3231.h"
 #include "input_event_types.h"
+#include "widget_utils.h"
 
 /*
 Widgets:
