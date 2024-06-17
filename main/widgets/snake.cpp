@@ -265,10 +265,10 @@ hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
         clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
     }
 
-    hagl_window_t final_clip{.x0= static_cast<uint16_t>(clip.x0 + 1 + clip_offset_x / 2),
-                            .y0= static_cast<uint16_t>(clip.y0 + clip_offset_y + 1),
-                            .x1= static_cast<uint16_t>(clip.x1 - 1 - clip_offset_x / 2),
-                            .y1= static_cast<uint16_t>(clip.y1 - 1)}; // Actual playable area
+    hagl_window_t final_clip{.x0= static_cast<uint16_t>(clip.x0+ clip_offset_x / 2),
+                            .y0= static_cast<uint16_t>(clip.y0 + clip_offset_y - 1),
+                            .x1= static_cast<uint16_t>(clip.x1 - clip_offset_x / 2),
+                            .y1= static_cast<uint16_t>(clip.y1 - 2)}; // Actual playable area
 
     *tile_size_ptr = tile_size;
     return final_clip;
@@ -328,8 +328,8 @@ game_setup:
 
     START_DRAW(display_handle, clip, display_mutex)
 
-        hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x1+2,
-        game_clip.y1-1, hagl_color(display_handle,255,255,255)); // Draw boundrary
+        hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x1,
+        game_clip.y1+1, hagl_color(display_handle,255,255,255)); // Draw boundrary
         
         DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
         

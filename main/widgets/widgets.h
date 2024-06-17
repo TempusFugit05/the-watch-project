@@ -9,7 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "ds3231.h"
+#include "ds3231/ds3231.h"
 #include "input_event_types.h"
 #include "widget_utils.h"
 

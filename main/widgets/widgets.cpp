@@ -8,7 +8,7 @@
 #include <ctime>
 #include <random>
 
-#include "../ds3231.h"
+#include "ds3231/ds3231.h"
 
 // #define CHECK_TASK_SIZES
 
