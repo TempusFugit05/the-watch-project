@@ -1,23 +1,19 @@
 #include "widgets.h"
 #include "fonts.h"
 #include <cstring>
+#include"esp_log.h"
 
-clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc)
-: widget(widget_display, display_mutex), rtc_handle(rtc)
+clock_widget::clock_widget(hagl_backend_t* widget_display, SemaphoreHandle_t display_mutex, hagl_window_t clip, ds3231_handle_t* rtc)
+: widget(widget_display, display_mutex, clip), rtc_handle(rtc)
 {
     ds3231_get_datetime(rtc_handle, &reference_time);
-    xTaskCreate(call_run_widget, "clock_widget", 2048, this, 3, &task_handle); // Create task to call run_widget
+    xTaskCreate(call_run_widget, "clock_widget", 4096, this, 3, &task_handle); // Create task to call run_widget
 }
 
 clock_widget::~clock_widget()
-{
-    if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(portMAX_DELAY)))
-    {
-        vTaskDelete(task_handle);
-        hagl_set_clip(display_handle,0 ,20, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Set drawable area
-        hagl_fill_rectangle_xyxy(display_handle, 0, 20, DISPLAY_WIDTH, DISPLAY_HEIGHT, hagl_color(display_handle,0,0,0)); // Clear screen
-        xSemaphoreGive(display_mutex);
-    } // Clear screen
+{    START_WIDGET_DELETION(task_deletion_mutex)
+    CLEAR_SCREEN(display_handle, clip, display_mutex)
+    END_WIDGET_DELETION(task_deletion_mutex)
 }
 
 void clock_widget::month_to_str(int month, char* buffer)
@@ -40,10 +36,9 @@ void clock_widget::run_widget ()
     
     while (1)
     {
-        if (xSemaphoreTake(display_mutex, portMAX_DELAY))
-        {
-        
-            hagl_set_clip(display_handle,0 ,20, DISPLAY_WIDTH, DISPLAY_HEIGHT); // Set drawable area
+
+        START_DRAW(display_handle, clip, display_mutex)
+
             struct tm current_time;
             ds3231_get_datetime(rtc_handle, &current_time);
 
@@ -98,11 +93,13 @@ void clock_widget::run_widget ()
             {
                 first_run = false;
             }
-            xSemaphoreGive(display_mutex);
+
+        END_DRAW(display_mutex)
+
         #ifdef CHECK_TASK_SIZES
             ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
         #endif
+        CHECK_WIDGET_DELETION_STATUS(task_deletion_mutex)
         vTaskDelay(pdMS_TO_TICKS(1000));
-        }
     }
 }

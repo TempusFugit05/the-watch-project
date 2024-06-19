@@ -276,16 +276,14 @@ hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
 }
 
 snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t clip) :
-                                    widget(widget_display, display_mutex), clip(clip)
+                                    widget(widget_display, display_mutex, clip)
 {
     widget::requires_inputs = true;
     xTaskCreate(call_run_widget, "test_widget", 4096, this, 3, &task_handle); // Create task to call run_widget
 }
 
 snake_game_widget::~snake_game_widget()
-{
-    vTaskDelete(task_handle);
-}
+{}
 
 void snake_game_widget::run_widget()
 {   
@@ -374,6 +372,13 @@ game_setup:
             if(input_event!=INIT_EVENT)
             {
                 move_direction = calculate_move_direction(move_direction, input_event);
+                if (input_event == LONG_PRESS_EVENT)
+                {
+                    set_input_requirement(false);
+                    is_game_over = true;
+                    break;
+                }
+                
                 input_event = INIT_EVENT; // Reset input
             }
 
@@ -450,7 +455,7 @@ game_setup:
             #endif
 
             uint32_t iteration_time = (esp_timer_get_time() - time_at_start)/10000;
-            
+            CHECK_WIDGET_DELETION_STATUS(task_deletion_mutex)
             if (iteration_time < delay_amount)
             {
                 vTaskDelay(pdMS_TO_TICKS(delay_amount-iteration_time));

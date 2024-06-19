@@ -1,6 +1,5 @@
 #ifndef INPUT_EVENT_TYPES_H
 #define INPUT_EVENT_TYPES_H
-#include "stdint.h"
 
 typedef enum : uint8_t{
     INIT_EVENT,

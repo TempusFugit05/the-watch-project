@@ -42,13 +42,19 @@ protected:
     hagl_backend_t* display_handle;
     SemaphoreHandle_t display_mutex;
     TaskHandle_t task_handle;
-    bool requires_inputs = false;
     input_event_t input_event = INIT_EVENT;
+    hagl_window_t clip;
+
+    SemaphoreHandle_t task_deletion_mutex;
+
+    bool requires_inputs = false;
+    bool set_input_requirement(bool requirement_state);
 
 public:
-    widget(hagl_backend_t* display_handle, SemaphoreHandle_t  display_mutex);
+    widget(hagl_backend_t* display_handle, SemaphoreHandle_t  display_mutex, hagl_window_t clip);
     input_event_t set_input_event(input_event_t event);
     bool get_input_requirements();
+    
     virtual ~widget() = 0;
     virtual void run_widget() = 0;
 };
@@ -85,7 +91,7 @@ class clock_widget : public widget
         int weekday_text_cords_y;
 
     public:
-        clock_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc);
+        clock_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t clip, ds3231_handle_t* rtc);
         ~clock_widget() override;
         void run_widget () override;
 
@@ -96,14 +102,13 @@ class info_bar_widget : public widget
     private:
         tm reference_time;
         ds3231_handle_t* rtc_handle;
-        hagl_window_t clip;
 
         char time_str[32];
         wchar_t formatted_time_str[32];
         bool first_run = true;
         
     public:
-        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, ds3231_handle_t* rtc, hagl_window_t clip);
+        info_bar_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t clip, ds3231_handle_t* rtc);
         ~info_bar_widget() override;
         void run_widget() override;
 };
@@ -111,7 +116,7 @@ class info_bar_widget : public widget
 class test_widget : public widget
 {
     public:
-        test_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex);
+        test_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t clip);
         ~test_widget() override;
         void run_widget() override;
 };
@@ -120,13 +125,7 @@ class test_widget : public widget
 class snake_game_widget : public widget
 {
     private:
-        hagl_window_t clip;
 
-        int tile_size_x;
-        int tile_size_y;
-
-        void draw_tile_map();
-        
     public:
         snake_game_widget(hagl_backend_t* display, SemaphoreHandle_t  display_mutex, hagl_window_t clip);
         ~snake_game_widget() override;
