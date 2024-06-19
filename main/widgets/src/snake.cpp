@@ -1,4 +1,5 @@
-#include "widgets.h"
+#include "widget.h"
+#include "snake_widget.h"
 #include "fonts.h"
 
 #include "nvs_flash.h"
@@ -15,8 +16,8 @@
 
 // #define CHECK_TASK_SIZES
 
-#define GRID_WIDTH  15
-#define GRID_HEIGHT 15
+#define GRID_WIDTH  10
+#define GRID_HEIGHT 10
 
 #define SCORE_FONT font6x9
 #define DIALOGUE_FONT font9x18b
@@ -42,21 +43,6 @@
 #define DRAW_TILE(pos_x, pos_y, size, clip, color) hagl_fill_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, size, size, color);
 #define DRAW_TILE_WITH_OUTLINE(pos_x, pos_y, size, clip, color, outline_color) DRAW_TILE(pos_x, pos_y, size, clip, color) hagl_draw_rectangle_xywh(display_handle, pos_x*size+clip.x0, pos_y*size+clip.y0, tile_size, tile_size, outline_color);
 
-typedef enum : uint8_t 
-{
-    DIRECTION_PADDING_LOWER,
-    DIRECTION_UP,
-    DIRECTION_RIGHT,
-    DIRECTION_DOWN,
-    DIRECTION_LEFT,
-    DIRECTION_PADDING_UPPER,
-}direction_t;
-
-typedef struct
-{
-    int x;
-    int y;
-}coordinates;
 
 void calculate_head_pos(std::vector<coordinates>* segments, direction_t direction)
 {
@@ -240,6 +226,26 @@ bool check_self_collisions(std::vector<coordinates>* segments)
     return false; // Return false if no collision detected
 }
 
+void snake_game_widget::reset_game()
+{
+    // Reset game stats
+    is_game_over = false;
+    input_event = INIT_EVENT;
+    move_direction = DIRECTION_RIGHT;
+    delay_amount = BASE_REFRESH_RATE;
+    score = 0;
+
+    DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
+
+    // Shrink snake to initial size
+    snake_segments.resize(INITIAL_SNAKE_SIZE);
+
+    // Erase game screen
+    START_DRAW(display_handle, game_clip, display_mutex);
+    hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, background_color);
+    END_DRAW(display_mutex);
+}
+
 hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
 {
     uint16_t tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? 
@@ -276,45 +282,36 @@ hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
 }
 
 snake_game_widget::snake_game_widget(hagl_backend_t* widget_display, SemaphoreHandle_t  display_mutex, hagl_window_t clip) :
-                                    widget(widget_display, display_mutex, clip)
+                                    widget(widget_display, display_mutex, clip, "snake_game_widget")
 {
     widget::requires_inputs = true;
-    xTaskCreate(call_run_widget, "test_widget", 4096, this, 3, &task_handle); // Create task to call run_widget
+    xTaskCreate(call_run_widget, WIDGET_NAME, 4096, this, 3, &task_handle); // Create task to call run_widget
 }
 
 snake_game_widget::~snake_game_widget()
-{}
+{
+    START_WIDGET_DELETION(task_handle, task_deletion_mutex);
+    CLEAR_SCREEN(display_handle, clip, display_mutex);
+}
 
 void snake_game_widget::run_widget()
 {   
-    uint16_t tile_size;
+    delay_amount = BASE_REFRESH_RATE;
 
-    hagl_window_t game_clip = get_game_clip(clip, &tile_size);
-
-    int score = 0;
-    uint16_t delay_amount = BASE_REFRESH_RATE;
     char text[BUFFER_SIZE];
     wchar_t formatted_text[BUFFER_SIZE]; // Formatted text to work with hagl library
-    direction_t move_direction = DIRECTION_RIGHT;
 
-    hagl_color_t snake_color = hagl_color(display_handle, 41, 233, 99);
-    hagl_color_t outline_color = hagl_color(display_handle, 255, 55, 169);
-    hagl_color_t food_color = hagl_color(display_handle, 0, 0, 255);
-    hagl_color_t background_color = hagl_color(display_handle, 0, 0, 0);
-    hagl_color_t text_color = hagl_color(display_handle, 255, 255 ,255);
-
-    bool is_game_over = false;
-    bool new_segment_created = false;
-    coordinates food;
-    coordinates head;
-
-    std::vector<coordinates> snake_segments;
-    for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
+    if (first_run)
     {
-        snake_segments.push_back(head);
-    } // Initialize snake body
+        game_clip = get_game_clip(clip, &tile_size);
+        for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
+        {
+            snake_segments.push_back(head);
+        } // Initialize snake body
+        first_run = false;
+    }
+    
 
-game_setup:
     head = {.x = GRID_WIDTH/2-INITIAL_SNAKE_SIZE, .y = GRID_HEIGHT/2};
     for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
     {
@@ -324,50 +321,34 @@ game_setup:
 
     find_new_food_position(&snake_segments, &food);    
 
-    START_DRAW(display_handle, clip, display_mutex)
+    START_DRAW(display_handle, clip, display_mutex);
 
-        hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x1,
-        game_clip.y1+1, hagl_color(display_handle,255,255,255)); // Draw boundrary
-        
-        DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
-        
-        for (int i = 0; i < snake_segments.size(); i++)
-        {
-            DRAW_TILE_WITH_OUTLINE(snake_segments[i].x, snake_segments[i].y, tile_size, game_clip, snake_color, outline_color);
-        } // Draw snake segments
+    hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x1,
+    game_clip.y1+1, hagl_color(display_handle,255,255,255)); // Draw boundrary
+    
+    DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
+    
+    for (int i = 0; i < snake_segments.size(); i++)
+    {
+        DRAW_TILE_WITH_OUTLINE(snake_segments[i].x, snake_segments[i].y, tile_size, game_clip, snake_color, outline_color);
+    } // Draw snake segments
 
-        clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color);
-        DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
+    clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color);
+    DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
 
-    END_DRAW(display_mutex)
+    END_DRAW(display_mutex);
     
     while (1)
     {
         if (input_event == SHORT_PRESS_EVENT)
         {
-            // Reset game stats
-            is_game_over = false;
-            input_event = INIT_EVENT;
-            move_direction = DIRECTION_RIGHT;
-            delay_amount = BASE_REFRESH_RATE;
-            score = 0;
-
-            DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
-
-            // Shrink snake to initial size
-            snake_segments.resize(INITIAL_SNAKE_SIZE);
-
-            // Erase game screen
-            START_DRAW(display_handle, game_clip, display_mutex)
-                hagl_fill_rectangle_xyxy(display_handle, clip.x0, clip.y0, clip.x1, clip.y1, background_color);
-            END_DRAW(display_mutex)
-            
-            goto game_setup;
+            reset_game();
+            run_widget();
         } // Restart game
         
         while (!is_game_over)
         {
-            uint64_t time_at_start = esp_timer_get_time(); // Get time at start of iteration
+            TickType_t time_at_start = pdTICKS_TO_MS(xTaskGetTickCount()); // Get time at start of iteration
 
             if(input_event!=INIT_EVENT)
             {
@@ -376,7 +357,6 @@ game_setup:
                 {
                     set_input_requirement(false);
                     is_game_over = true;
-                    break;
                 }
                 
                 input_event = INIT_EVENT; // Reset input
@@ -384,89 +364,87 @@ game_setup:
 
             head.x = snake_segments.back().x; // Reference head position to sort the body later
             head.y = snake_segments.back().y;
+            START_DRAW(display_handle, game_clip, display_mutex);
 
-            START_DRAW(display_handle, game_clip, display_mutex)
+            if (snake_segments.back().x == food.x && snake_segments.back().y == food.y)
+            {
+                coordinates new_segment{.x=snake_segments.back().x,.y=snake_segments.back().y};
+                snake_segments.push_back(new_segment);
 
-                if (snake_segments.back().x == food.x && snake_segments.back().y == food.y)
-                {
-                    coordinates new_segment{.x=snake_segments.back().x,.y=snake_segments.back().y};
-                    snake_segments.push_back(new_segment);
-
-                    find_new_food_position(&snake_segments, &food);
-                    DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
-                 
-                    score++;
-                    
-                    SET_CLIP(display_handle, clip);
-                    DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
-                    SET_CLIP(display_handle, game_clip);
-
-                    if (score < SCORE_FOR_MAX_SPEED)
-                    {
-                        delay_amount -= (BASE_REFRESH_RATE - MAX_REFRESH_RATE)/SCORE_FOR_MAX_SPEED;
-                    }
-                    
-                    new_segment_created = true;
-                } // Check if the snake ate the food
-
-                calculate_head_pos(&snake_segments, move_direction);
-
-                if (snake_segments.back().x == GRID_WIDTH || snake_segments.back().x < 0 ||
-                    snake_segments.back().y == GRID_HEIGHT || snake_segments.back().y < 0 ||
-                    check_self_collisions(&snake_segments))
-                {
-                    is_game_over = true;
-                    xSemaphoreGive(display_mutex); // Give back control of the display
-                } // Check if snake crashed into the wall
-
-                if (!new_segment_created)
-                {
-                    DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
-                    sort_segments(&snake_segments, head);
-                    DRAW_TILE_WITH_OUTLINE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, snake_color, outline_color); // Draw snake head
-                    hagl_draw_rectangle_xywh(display_handle, snake_segments.front().x*tile_size+game_clip.x0, snake_segments.front().y*tile_size+game_clip.y0, tile_size, tile_size, outline_color); // Draw tail outline to close snake shape
-                } // Draw snake elements
-
-                DRAW_TILE_WITH_OUTLINE(snake_segments.back().x, snake_segments.back().y, tile_size, game_clip, snake_color, outline_color) // Draw head
-                DRAW_TILE_WITH_OUTLINE(snake_segments[snake_segments.size()-2].x, snake_segments[snake_segments.size()-2].y, tile_size, game_clip, snake_color, outline_color) // Clear previous segment
-
-                clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color); // Clear leftover outlines inside the snake body
-                draw_eyes(display_handle, &snake_segments, tile_size, game_clip, background_color, move_direction);
-                new_segment_created = false;
+                find_new_food_position(&snake_segments, &food);
+                DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
                 
-                if (is_game_over)
-                {
-                    int text_x, text_y;
-                    snprintf(text, BUFFER_SIZE, "GAME OVER!");
-                    text_x = (clip.x1 - clip.x0 - strlen(text)*DIALOGUE_FONT.size_x)/2;
-                    text_y = (clip.y1 - clip.y0)/2;
-                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
+                score++;
+                
+                SET_CLIP(display_handle, clip);
+                DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
+                SET_CLIP(display_handle, game_clip);
 
-                    snprintf(text, BUFFER_SIZE, "PLAY AGAIN?");
-                    text_x = (clip.x1 - clip.x0 - strlen(text)*DIALOGUE_FONT.size_x)/2;
-                    text_y = (clip.y1 - clip.y0)/2+DIALOGUE_FONT.size_y;
-                    draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
+                if (score < SCORE_FOR_MAX_SPEED)
+                {
+                    delay_amount -= (BASE_REFRESH_RATE - MAX_REFRESH_RATE)/SCORE_FOR_MAX_SPEED;
                 }
                 
-            END_DRAW(display_mutex)
+                new_segment_created = true;
+            } // Check if the snake ate the food
+
+            calculate_head_pos(&snake_segments, move_direction);
+
+            if (snake_segments.back().x == GRID_WIDTH || snake_segments.back().x < 0 ||
+                snake_segments.back().y == GRID_HEIGHT || snake_segments.back().y < 0 ||
+                check_self_collisions(&snake_segments))
+            {
+                is_game_over = true;
+            } // Check if snake crashed into the wall
+
+            if (!new_segment_created)
+            {
+                DRAW_TILE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, background_color); // Erase prev tail position
+                sort_segments(&snake_segments, head);
+                DRAW_TILE_WITH_OUTLINE(snake_segments.front().x, snake_segments.front().y, tile_size, game_clip, snake_color, outline_color); // Draw snake head
+                hagl_draw_rectangle_xywh(display_handle, snake_segments.front().x*tile_size+game_clip.x0, snake_segments.front().y*tile_size+game_clip.y0, tile_size, tile_size, outline_color); // Draw tail outline to close snake shape
+            } // Draw snake elements
+
+            DRAW_TILE_WITH_OUTLINE(snake_segments.back().x, snake_segments.back().y, tile_size, game_clip, snake_color, outline_color) // Draw head
+            DRAW_TILE_WITH_OUTLINE(snake_segments[snake_segments.size()-2].x, snake_segments[snake_segments.size()-2].y, tile_size, game_clip, snake_color, outline_color) // Clear previous segment
+
+            clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color); // Clear leftover outlines inside the snake body
+            draw_eyes(display_handle, &snake_segments, tile_size, game_clip, background_color, move_direction);
+            new_segment_created = false;
+            
+            if (is_game_over)
+            {
+                int text_x, text_y;
+                snprintf(text, BUFFER_SIZE, "GAME OVER!");
+                text_x = (clip.x1 - clip.x0 - strlen(text)*DIALOGUE_FONT.size_x)/2;
+                text_y = (clip.y1 - clip.y0)/2;
+                draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
+
+                snprintf(text, BUFFER_SIZE, "PLAY AGAIN?");
+                text_x = (clip.x1 - clip.x0 - strlen(text)*DIALOGUE_FONT.size_x)/2;
+                text_y = (clip.y1 - clip.y0)/2+DIALOGUE_FONT.size_y;
+                draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
+            }
+                
+            END_DRAW(display_mutex);
             
             #ifdef CHECK_TASK_SIZES
             ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
             #endif
 
-            uint32_t iteration_time = (esp_timer_get_time() - time_at_start)/10000;
-            CHECK_WIDGET_DELETION_STATUS(task_deletion_mutex)
+            uint32_t iteration_time = pdTICKS_TO_MS(xTaskGetTickCount()) - time_at_start;
+
             if (iteration_time < delay_amount)
             {
-                vTaskDelay(pdMS_TO_TICKS(delay_amount-iteration_time));
+                END_ITERATION(delay_amount-iteration_time, task_handle, task_deletion_mutex);
             }
 
             else
             {
-                vTaskDelay(pdMS_TO_TICKS(delay_amount));
+                END_ITERATION(delay_amount, task_handle, task_deletion_mutex);
             }
             
         }
-    vTaskDelay(pdMS_TO_TICKS(200));
+    END_ITERATION(200, task_handle, task_deletion_mutex)
     } 
 }

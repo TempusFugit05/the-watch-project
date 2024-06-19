@@ -4,7 +4,7 @@
 #include "widgets.h"
 #include "esp_timer.h"
 
-#define SWITCHING_DELAY 200000
+#define SWITCHING_DELAY 200
 
 typedef enum : uint8_t{
     SCREEN_FACES_PADDING_LOWER,
@@ -71,44 +71,45 @@ void main_screen_state_machine(input_event_t event)
     static main_screen_faces_t current_face = SCREEN_FACES_PADDING_LOWER;
     static info_bar_widget *info_bar = new info_bar_widget(display, display_mutex, info_bar_clip, &ds3231_dev_handle);
 
-    static uint64_t prev_switching_time = esp_timer_get_time();
+    static TickType_t prev_switching_time = 0;
 
     if (event == INIT_EVENT)
     {
-        widget_instance = new test_widget(display, display_mutex, widget_clip);
-        // widget_instance = new snake_game_widget(display, display_mutex, widget_clip);
+        // widget_instance = new test_widget(display, display_mutex, widget_clip);
+        widget_instance = new snake_game_widget(display, display_mutex, widget_clip);
         current_face = SCREEN_HEART_RATE_FACE;
-    } // Initialize the clock widget upon startup
-
-    current_face = scroll_face(event, current_face); // Iterate face
-    
+    } // Initialize the clock widget upon startup    
 
     if (event == SCROLL_UP_EVENT || event == SCROLL_DOWN_EVENT)
     {
-        if (esp_timer_get_time() - prev_switching_time >= SWITCHING_DELAY)
+        if (pdTICKS_TO_MS(xTaskGetTickCount()) - prev_switching_time >= SWITCHING_DELAY)
         {
+            current_face = scroll_face(event, current_face); // Iterate face
             if (widget_instance != NULL)
             {
                 delete widget_instance;
-                // widget_instance = NULL;
+                widget_instance = NULL;
             }
             
             switch (current_face)
             {
                 case SCREEN_CLOCK_FACE:
                     {
+                        hagl_window_t widget_clip = {.x0=0, .y0=0, .x1=DISPLAY_WIDTH, .y1=DISPLAY_HEIGHT};
+                        if (info_bar != NULL)
+                        {
+                            delete info_bar;
+                            info_bar = NULL;
+                        }
+                        
                         widget_instance = new clock_widget(display, display_mutex, widget_clip, &ds3231_dev_handle);
-
-                        // if (info_bar != NULL)
-                        // {
-                        //     delete info_bar;
-                        //     info_bar = NULL;
-                        // }
                         break;
                     } // Create clock widget and delete info bar widget if it exists
 
                 case SCREEN_HEART_RATE_FACE:
                 {
+                    hagl_window_t widget_clip = {.x0=0, .y0=INFO_BAR_HEIGHT, .x1=DISPLAY_WIDTH, .y1=DISPLAY_HEIGHT};
+
                     widget_instance = new test_widget(display, display_mutex, widget_clip);
                     
                     if (info_bar == NULL)
@@ -120,6 +121,7 @@ void main_screen_state_machine(input_event_t event)
                 default:
                     break;
             } // Create widget based on the current screen face
+            prev_switching_time = pdTICKS_TO_MS(xTaskGetTickCount());
         }
     }
 }
