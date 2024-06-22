@@ -51,7 +51,7 @@ void calculate_head_pos(std::vector<coordinates>* segments, direction_t directio
     case DIRECTION_UP:
         segments->back().y--;
         break;
-    
+
     case DIRECTION_RIGHT:
         segments->back().x++;
         break;
@@ -59,7 +59,7 @@ void calculate_head_pos(std::vector<coordinates>* segments, direction_t directio
     case DIRECTION_DOWN:
         segments->back().y++;
         break;
-    
+
     case DIRECTION_LEFT:
         segments->back().x--;
         break;
@@ -73,15 +73,15 @@ direction_t calculate_move_direction(direction_t current_direction, input_event_
 {
     switch (input)
         {
-        case SCROLL_DOWN_EVENT:
+        case SCROLL_LEFT_EVENT:
             current_direction = static_cast<direction_t>(current_direction - 1);
             if (current_direction == DIRECTION_PADDING_LOWER)
             {
                 current_direction = static_cast<direction_t>(DIRECTION_PADDING_UPPER - 1);
             } // Change move direction CCW
             break;
-        
-        case SCROLL_UP_EVENT:
+
+        case SCROLL_RIGHT_EVENT:
             current_direction = static_cast<direction_t>(current_direction + 1);
             if (current_direction == DIRECTION_PADDING_UPPER)
             {
@@ -95,7 +95,7 @@ direction_t calculate_move_direction(direction_t current_direction, input_event_
     return current_direction;
 }
 
-void draw_string(char* str, wchar_t* formatted_str, int x, int y, hagl_backend_t* display, hagl_color_t color, font input_font) 
+void draw_string(char* str, wchar_t* formatted_str, int x, int y, hagl_backend_t* display, hagl_color_t color, font input_font)
 {
     mbstowcs(formatted_str, str, BUFFER_SIZE);
     hagl_put_text(display, formatted_str, x, y, color, input_font.font_data);
@@ -105,7 +105,7 @@ void draw_eyes(hagl_backend_t* display_handle, std::vector<coordinates>* segment
 {
     // AWFUL!!!!!!!!!!!
     coordinates head_pos{.x=(*segments).back().x, .y=(*segments).back().y};
-    
+
     if (direction == DIRECTION_UP || direction == DIRECTION_DOWN)
     {
         coordinates eye_pos{.x=head_pos.x*tile_size+clip.x0+1, .y=head_pos.y*tile_size+clip.y0+tile_size/3};
@@ -123,7 +123,7 @@ void draw_eyes(hagl_backend_t* display_handle, std::vector<coordinates>* segment
         hagl_fill_rectangle_xywh(display_handle, eye_pos.x, eye_pos.y, tile_size/3, tile_size/3, eye_color);
         hagl_fill_rectangle_xywh(display_handle, eye_pos_2.x, eye_pos_2.y, tile_size/3, tile_size/3, eye_color);
     }
-    
+
 }
 
 void clean_segment_lines(hagl_backend_t* display_handle, std::vector<coordinates>* segments, int tile_size, hagl_window_t clip, hagl_color_t snake_color)
@@ -138,7 +138,7 @@ void clean_segment_lines(hagl_backend_t* display_handle, std::vector<coordinates
         if (current_seg.x - prev_seg.x == 1)
         {
             hagl_draw_vline_xyh(display_handle, pos.x, pos.y+1, tile_size-2, snake_color);
-            hagl_draw_vline_xyh(display_handle, pos.x-1, pos.y+1, tile_size-2, snake_color);    
+            hagl_draw_vline_xyh(display_handle, pos.x-1, pos.y+1, tile_size-2, snake_color);
         }
         else if (current_seg.x - prev_seg.x == -1)
         {
@@ -201,7 +201,7 @@ void sort_segments(std::vector<coordinates>* segments, coordinates prev_head_cor
     {
         int temp_pos_x = (*segments)[i].x;
         int temp_pos_y = (*segments)[i].y;
-        
+
         (*segments)[i].x = prev_head_cords.x;
         (*segments)[i].y = prev_head_cords.y;
 
@@ -248,7 +248,7 @@ void snake_game_widget::reset_game()
 
 hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
 {
-    uint16_t tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? 
+    uint16_t tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ?
     (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0)/GRID_HEIGHT;
 
     uint16_t clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size; // Offset of the pixles that can't be fitted inside a tile
@@ -256,7 +256,7 @@ hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
 
     if (clip_offset_x < 2)
     {
-        tile_size = ((clip.x1-clip.x0 - 2 + clip_offset_x)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ? 
+        tile_size = ((clip.x1-clip.x0 - 2 + clip_offset_x)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0) ?
         (clip.x1-clip.x0 - 2 + clip_offset_x)/GRID_WIDTH : (clip.y1-clip.y0)/GRID_HEIGHT;
         clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size; // Offset of the pixles that can't be fitted inside a tile
         clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
@@ -265,7 +265,7 @@ hagl_window_t get_game_clip(hagl_window_t clip, uint16_t* tile_size_ptr)
     // Making sure there is enough space above the playable area to draw text
     if (clip_offset_y < SCORE_FONT.size_y+2)
     {
-        tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0 - SCORE_FONT.size_y+2 + clip_offset_y) ? 
+        tile_size = ((clip.x1-clip.x0)/GRID_WIDTH)*GRID_HEIGHT<(clip.y1-clip.y0 - SCORE_FONT.size_y+2 + clip_offset_y) ?
                     (clip.x1-clip.x0)/GRID_WIDTH : (clip.y1-clip.y0 - SCORE_FONT.size_y+2 + clip_offset_y)/GRID_HEIGHT;
         clip_offset_x = (clip.x1-clip.x0)-GRID_WIDTH*tile_size;
         clip_offset_y = (clip.y1-clip.y0)-GRID_HEIGHT*tile_size;
@@ -295,7 +295,7 @@ snake_game_widget::~snake_game_widget()
 }
 
 void snake_game_widget::run_widget()
-{   
+{
     delay_amount = BASE_REFRESH_RATE;
 
     char text[BUFFER_SIZE];
@@ -310,7 +310,7 @@ void snake_game_widget::run_widget()
         } // Initialize snake body
         first_run = false;
     }
-    
+
 
     head = {.x = GRID_WIDTH/2-INITIAL_SNAKE_SIZE, .y = GRID_HEIGHT/2};
     for (int i = 0; i < INITIAL_SNAKE_SIZE; i++)
@@ -319,15 +319,15 @@ void snake_game_widget::run_widget()
         head.x += 1;
     } // Set initial segment positions
 
-    find_new_food_position(&snake_segments, &food);    
+    find_new_food_position(&snake_segments, &food);
 
     START_DRAW(display_handle, clip, display_mutex);
 
     hagl_draw_rectangle_xyxy(display_handle, game_clip.x0-1, game_clip.y0-1, game_clip.x1,
     game_clip.y1+1, hagl_color(display_handle,255,255,255)); // Draw boundrary
-    
+
     DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
-    
+
     for (int i = 0; i < snake_segments.size(); i++)
     {
         DRAW_TILE_WITH_OUTLINE(snake_segments[i].x, snake_segments[i].y, tile_size, game_clip, snake_color, outline_color);
@@ -337,7 +337,7 @@ void snake_game_widget::run_widget()
     DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
 
     END_DRAW(display_mutex);
-    
+
     while (1)
     {
         if (input_event == SHORT_PRESS_EVENT)
@@ -345,7 +345,7 @@ void snake_game_widget::run_widget()
             reset_game();
             run_widget();
         } // Restart game
-        
+
         while (!is_game_over)
         {
             TickType_t time_at_start = pdTICKS_TO_MS(xTaskGetTickCount()); // Get time at start of iteration
@@ -358,7 +358,7 @@ void snake_game_widget::run_widget()
                     set_input_requirement(false);
                     is_game_over = true;
                 }
-                
+
                 input_event = INIT_EVENT; // Reset input
             }
 
@@ -373,9 +373,9 @@ void snake_game_widget::run_widget()
 
                 find_new_food_position(&snake_segments, &food);
                 DRAW_TILE(food.x, food.y, tile_size, game_clip, food_color); // Draw food
-                
+
                 score++;
-                
+
                 SET_CLIP(display_handle, clip);
                 DRAW_SCORE(clip, game_clip, text, formatted_text, display_handle, score);
                 SET_CLIP(display_handle, game_clip);
@@ -384,7 +384,7 @@ void snake_game_widget::run_widget()
                 {
                     delay_amount -= (BASE_REFRESH_RATE - MAX_REFRESH_RATE)/SCORE_FOR_MAX_SPEED;
                 }
-                
+
                 new_segment_created = true;
             } // Check if the snake ate the food
 
@@ -411,7 +411,7 @@ void snake_game_widget::run_widget()
             clean_segment_lines(display_handle, &snake_segments, tile_size, game_clip, snake_color); // Clear leftover outlines inside the snake body
             draw_eyes(display_handle, &snake_segments, tile_size, game_clip, background_color, move_direction);
             new_segment_created = false;
-            
+
             if (is_game_over)
             {
                 int text_x, text_y;
@@ -425,9 +425,9 @@ void snake_game_widget::run_widget()
                 text_y = (clip.y1 - clip.y0)/2+DIALOGUE_FONT.size_y;
                 draw_string(text, formatted_text, text_x, text_y, display_handle, text_color, DIALOGUE_FONT);
             }
-                
+
             END_DRAW(display_mutex);
-            
+
             #ifdef CHECK_TASK_SIZES
             ESP_LOGI("clock_widget", "Task size: %i", uxTaskGetStackHighWaterMark(NULL));
             #endif
@@ -443,8 +443,8 @@ void snake_game_widget::run_widget()
             {
                 END_ITERATION(delay_amount, task_handle, task_deletion_mutex);
             }
-            
+
         }
     END_ITERATION(200, task_handle, task_deletion_mutex)
-    } 
+    }
 }

@@ -10,6 +10,12 @@
 
 // #define DEBUG_MUTEXES
 
+typedef struct
+{
+    int x;
+    int y;
+}coordinates;
+
 // Set drawable area
 #define SET_CLIP(display, clip) hagl_set_clip(display, clip.x0, clip.y0, clip.x1, clip.y1);
 

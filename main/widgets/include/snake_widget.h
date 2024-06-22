@@ -14,13 +14,6 @@ typedef enum : uint8_t
     DIRECTION_PADDING_UPPER,
 }direction_t;
 
-typedef struct
-{
-    int x;
-    int y;
-}coordinates;
-
-
 class snake_game_widget : public widget
 {
     private:

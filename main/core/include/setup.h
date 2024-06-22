@@ -19,5 +19,5 @@ gptimer_handle_t setup_gptimer(QueueHandle_t* queue_ptr);
 void setup_gpio();
 void setup_isrs(QueueHandle_t* event_queue, gptimer_handle_t* timer);
 void setup_i2c_master(i2c_master_bus_handle_t* bus_handle);
-
+void setup_display();
 #endif // SETUP_H

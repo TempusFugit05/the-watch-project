@@ -1,7 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-#include "driver/gpio.h"    
+#include "driver/gpio.h"
 #include "driver/gptimer.h"
 
 #include "input_event_types.h"
@@ -70,7 +70,7 @@ one of them will always change before the other when rotating clockwise and vise
 */
     bool CLK_state = gpio_get_level(ENCODER_CLK_PIN);
     static bool reference_CLK_state = gpio_get_level(ENCODER_CLK_PIN);
-    
+
     input_event_t event;
     BaseType_t should_yield = pdFALSE;
     QueueHandle_t queue = *static_cast<QueueHandle_t*>(queue_ptr);
@@ -81,14 +81,14 @@ one of them will always change before the other when rotating clockwise and vise
 
         if (CLK_state != gpio_get_level(ENCODER_DT_PIN))
         {
-            event = SCROLL_DOWN_EVENT;
+            event = SCROLL_RIGHT_EVENT;
             xQueueSendFromISR(queue, &event, &should_yield);
         }
         else
         {
-            event = SCROLL_UP_EVENT;
+            event = SCROLL_LEFT_EVENT;
             xQueueSendFromISR(queue, &event, &should_yield);
-        }        
+        }
 
     }
 

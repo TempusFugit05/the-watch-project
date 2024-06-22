@@ -4,3 +4,9 @@
 [submodule "components/hagl_hal"]
 	path = components/hagl_hal
 	url = https://github.com/tuupola/hagl_esp_mipi.git
+[submodule "components/lvgl_esp32_drivers"]
+	path = components/lvgl_esp32_drivers
+	url = https://github.com/lvgl/lvgl_esp32_drivers.git
+[submodule "components/lvgl"]
+	path = components/lvgl
+	url = https://github.com/lvgl/lvgl.git
