@@ -7,22 +7,22 @@
 class clock_widget : public widget
 {
     private:
-    
+
         tm reference_time; // Older time to compare against
         ds3231_handle_t* rtc_handle;
 
-        char time_str [64]; // Buffer to display the time 
+        char time_str [64]; // Buffer to display the time
         wchar_t formatted_str [64]; // String buffer compatable with the display library
         char month_str[10]; // Buffer to store the month's name
-        
+
         char weekday_str[10]; // Buffer to store the week's name
         wchar_t formatted_weekday[10];
-        
+
         void month_to_str(int month, char* buffer);
         void weekday_to_str(int weekday, char* buffer);
 
         hagl_color_t text_color;
-        
+
         bool first_run = true;
 
         int hours_text_cords_y;

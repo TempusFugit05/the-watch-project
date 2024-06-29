@@ -3,10 +3,11 @@
 #include "freertos/queue.h"
 #include "input_event_types.h"
 
-// #include "widgets.h"
 #include "ds3231.h"
 #include "isrs.h"
 #include "setup.h"
+
+#include "new_clock.h"
 
 ds3231_handle_t ds3231_dev_handle;
 
@@ -30,9 +31,10 @@ extern "C" void app_main(void)
 
     setup_display();
 
-    // main_screen_state_machine(INIT_EVENT);
-
     // Task to handle the various input interrupt signals
     TaskHandle_t input_events_handler_task_handle;
     xTaskCreatePinnedToCore(input_events_handler_task, "input_events_handler_task", 2048, &input_event_queue, 5, &input_events_handler_task_handle, 0);
+
+    TaskHandle_t task;
+    xTaskCreate(run_widget, "clock", 4096, &ds3231_dev_handle, 3, &task);
 }

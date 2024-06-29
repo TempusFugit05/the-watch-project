@@ -12,15 +12,13 @@
 #include "setup.h"
 
 #include "lvgl.h"
-#include "demos/stress/lv_demo_stress.h"
 #include "esp_lvgl_port.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
-#include "demos/benchmark/lv_demo_benchmark.h"
-
 #include "widget_manager.h"
+
 
 const char TAG[] = "Setup";
 
@@ -65,18 +63,6 @@ void setup_gpio()
 {
     /*Configure the gpio of the esp*/
     ESP_LOGI(TAG, "Setting up GPIO");
-
-    // LED setup
-    // gpio_config_t led_io_conf =
-    // {
-    //     .pin_bit_mask = (1ULL << DISPLAY_LED_PIN), // Bitmask to select the GPIO pins
-    //     .mode = GPIO_MODE_OUTPUT, // Set as output mode
-    //     .pull_up_en = GPIO_PULLUP_DISABLE, // Disable pull-up resistor
-    //     .pull_down_en = GPIO_PULLDOWN_DISABLE, // Disable pull-down resistor
-    //     .intr_type = GPIO_INTR_DISABLE, // Disable interrupt
-    // };
-    // gpio_config(&led_io_conf); // Apply configuration
-    // gpio_set_level(DISPLAY_LED_PIN, 1);
 
     // Button setup
     gpio_config_t button_io_conf =
@@ -185,12 +171,12 @@ void setup_lcd_ledc()
     2<<(DIAPLAY_LEDC_RESOLUTION-1), DISPLAY_FADE_IN_TIME_MS, LEDC_FADE_NO_WAIT));
 }
 
-void test_callback(lv_event_t* event)
-{
-    static int counter = 0;
-    counter ++;
-    ESP_LOGI("BUTTON", "Clicks: %i", counter);
-}
+// void test_callback(lv_event_t* event)
+// {
+//     static int counter = 0;
+//     counter ++;
+//     ESP_LOGI("BUTTON", "Clicks: %i", counter);
+// }
 
 void setup_display()
 {
@@ -215,16 +201,18 @@ void setup_display()
     esp_lcd_panel_dev_config_t panel_dev_config =
     {
         .reset_gpio_num = DISPLAY_RST_PIN,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+        .color_space = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
 
     esp_lcd_panel_handle_t display_handle;
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_dev_config, &display_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(display_handle));
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(display_handle, true));
+
     ESP_ERROR_CHECK(esp_lcd_panel_init(display_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(display_handle, true));
-
+    
     const lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     ESP_ERROR_CHECK(lvgl_port_init(&lvgl_cfg));
 
@@ -241,21 +229,20 @@ void setup_display()
         .flags = {.buff_dma = true},
     };
 
-
     lv_init(); // Initialize lvgl library
 
-    lv_disp_t* display = lvgl_port_add_disp(&display_port_config);
+    lvgl_port_add_disp(&display_port_config);
 
-    // Create test button
-    lv_obj_t* button = lv_btn_create(lv_scr_act());
-    lv_obj_center(button);
-    lv_obj_add_event_cb(button, test_callback, LV_EVENT_PRESSED, NULL);
+    // // Create test button
+    // lv_obj_t* button = lv_btn_create(lv_scr_act());
+    // lv_obj_center(button);
+    // lv_obj_add_event_cb(button, test_callback, LV_EVENT_PRESSED, NULL);
 
-    // Create button text
-    lv_obj_t* text = lv_label_create(button);
-    lv_label_set_text(text, "CLICK ME!");
-    lv_obj_center(text);
-
+    // // Create button text
+    // lv_obj_t* text = lv_label_create(button);
+    // lv_label_set_text(text, "CLICK ME!");
+    // lv_obj_center(text);
+    
     // Create encoder driver to handle inputs
     static lv_indev_drv_t encoder_driver;
     lv_indev_drv_init(&encoder_driver);
@@ -263,10 +250,26 @@ void setup_display()
     encoder_driver.read_cb = encoder_event_callback;
     lv_indev_t* encoder = lv_indev_drv_register(&encoder_driver);
 
-    // Add button to group to be able to receive inputs
-    lv_group_t* button_group = lv_group_create();
-    lv_group_add_obj(button_group, button);
-    lv_indev_set_group(encoder, button_group);
+    // // Add button to group to be able to receive inputs
+    // lv_group_t* button_group = lv_group_create();
+    // lv_group_add_obj(button_group, button);
+    // lv_indev_set_group(encoder, button_group);
     setup_lcd_ledc(); // Setup for the lcd led
+
+// uint8_t* ram_font = (uint8_t*)pvPortMalloc(advanced_pixel_lcd_7_size);
+// if (ram_font) {
+//     memcpy(ram_font, advanced_pixel_lcd_7, advanced_pixel_lcd_7_size);
+// } else {
+//     ESP_LOGE("", "Failed to allocate memory for font");
+// }
+// int count =  0;
+// for (int i = 0; i < advanced_pixel_lcd_7_size; i++)
+// {
+//     if (advanced_pixel_lcd_7[i] == ram_font[i])
+//     {
+//         count++;
+//     }
+// }
+// ESP_LOGI("", "%d members matched out of %d, meaning %d errors", count, advanced_pixel_lcd_7_size, advanced_pixel_lcd_7_size-count);
 
 }
