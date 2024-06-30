@@ -19,12 +19,11 @@
 #include "esp_lcd_panel_ops.h"
 #include "widget_manager.h"
 
-
-const char TAG[] = "Setup";
+#define TAG "Setup"
 
 gptimer_handle_t setup_gptimer(QueueHandle_t* queue_ptr)
 {
-    /*Timer interrupt setup (for button)*/
+    /*Timer interrupt setup (for the button on the encoder)*/
 
     ESP_LOGI(TAG, "Setting up timer");
 
@@ -62,9 +61,10 @@ gptimer_handle_t setup_gptimer(QueueHandle_t* queue_ptr)
 void setup_gpio()
 {
     /*Configure the gpio of the esp*/
+
     ESP_LOGI(TAG, "Setting up GPIO");
 
-    // Button setup
+    /*Button setup*/
     gpio_config_t button_io_conf =
     {
         .pin_bit_mask = (1ULL << GPIO_BUTTON_PIN),
@@ -75,7 +75,7 @@ void setup_gpio()
     };
     gpio_config(&button_io_conf);
 
-    // Encoder pins setup
+    /*Encoder pins setup*/
     gpio_config_t encoder_io_conf =
     {
         .pin_bit_mask = (1ULL << ENCODER_CLK_PIN | 1ULL << ENCODER_DT_PIN),
@@ -89,27 +89,30 @@ void setup_gpio()
 
 void setup_isrs(QueueHandle_t* event_queue, gptimer_handle_t* timer)
 {
+    /*Sets-up GPIO interrupts*/
+
     ESP_LOGI(TAG, "Setting up interrupts");
 
     /*Set up the isrs of the input devices*/
     ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_IRAM)); // Set up interrupt
 
-    // Button isr
-    ESP_ERROR_CHECK(gpio_set_intr_type(GPIO_BUTTON_PIN, GPIO_INTR_ANYEDGE)); // Interrupt will be called on button release since
-    ESP_ERROR_CHECK(gpio_isr_handler_add(GPIO_BUTTON_PIN, gpio_button_isr_handler, timer)); // Link to interrupt handler & pass pointer to the timer object when called
+    /*Button isr*/
+    ESP_ERROR_CHECK(gpio_set_intr_type(GPIO_BUTTON_PIN, GPIO_INTR_ANYEDGE));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(GPIO_BUTTON_PIN, gpio_button_isr_handler, timer)); // Link to interrupt handler & pass pointer to the timer object
 
-    // Encoder (DT pin) isr
+    /*Encoder (DT pin) isr*/
     ESP_ERROR_CHECK(gpio_set_intr_type(ENCODER_DT_PIN, GPIO_INTR_ANYEDGE));
     ESP_ERROR_CHECK(gpio_isr_handler_add(ENCODER_DT_PIN, gpio_encoder_isr_handler, event_queue));
 
-    // Encoder (CLK pin) isr
+    /*Encoder (CLK pin) isr*/
     ESP_ERROR_CHECK(gpio_set_intr_type(ENCODER_CLK_PIN, GPIO_INTR_ANYEDGE));
     ESP_ERROR_CHECK(gpio_isr_handler_add(ENCODER_CLK_PIN, gpio_encoder_isr_handler, event_queue));
 }
 
 void setup_i2c_master(i2c_master_bus_handle_t* bus_handle)
 {
-    // Set up the i2c master bus
+    /*Sets up the i2c master bus*/
+
     ESP_LOGI(TAG, "Setting up i2c bus");
     i2c_master_bus_config_t i2c_master_conf =
     {
@@ -163,23 +166,19 @@ void setup_lcd_ledc()
         .hpoint = 0, // Not really needed for simple fading
     };
 
+    /*Turn-on the LCD backlight with gradual fading*/
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_conf));
 
     ESP_ERROR_CHECK(ledc_fade_func_install(ESP_INTR_FLAG_LEVEL3));
 
     ESP_ERROR_CHECK(ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, DISPLAY_LEDC_CHANNEL,
-    2<<(DIAPLAY_LEDC_RESOLUTION-1), DISPLAY_FADE_IN_TIME_MS, LEDC_FADE_NO_WAIT));
+    2<<(DIAPLAY_LEDC_RESOLUTION-1), DISPLAY_FADE_IN_TIME_MS, LEDC_FADE_NO_WAIT)); // Initiate startup led fading for display
 }
-
-// void test_callback(lv_event_t* event)
-// {
-//     static int counter = 0;
-//     counter ++;
-//     ESP_LOGI("BUTTON", "Clicks: %i", counter);
-// }
 
 void setup_display()
 {
+    /*Sets-up the LCD driver and led control for the backlight*/
+
     ESP_LOGI(TAG, "Setting up display");
 
     setup_display_spi_bus();
@@ -232,44 +231,13 @@ void setup_display()
     lv_init(); // Initialize lvgl library
 
     lvgl_port_add_disp(&display_port_config);
-
-    // // Create test button
-    // lv_obj_t* button = lv_btn_create(lv_scr_act());
-    // lv_obj_center(button);
-    // lv_obj_add_event_cb(button, test_callback, LV_EVENT_PRESSED, NULL);
-
-    // // Create button text
-    // lv_obj_t* text = lv_label_create(button);
-    // lv_label_set_text(text, "CLICK ME!");
-    // lv_obj_center(text);
     
-    // Create encoder driver to handle inputs
+    /*Create encoder driver to handle inputs*/
     static lv_indev_drv_t encoder_driver;
     lv_indev_drv_init(&encoder_driver);
     encoder_driver.type = LV_INDEV_TYPE_ENCODER;
     encoder_driver.read_cb = encoder_event_callback;
-    lv_indev_t* encoder = lv_indev_drv_register(&encoder_driver);
+    lv_indev_drv_register(&encoder_driver);
 
-    // // Add button to group to be able to receive inputs
-    // lv_group_t* button_group = lv_group_create();
-    // lv_group_add_obj(button_group, button);
-    // lv_indev_set_group(encoder, button_group);
     setup_lcd_ledc(); // Setup for the lcd led
-
-// uint8_t* ram_font = (uint8_t*)pvPortMalloc(advanced_pixel_lcd_7_size);
-// if (ram_font) {
-//     memcpy(ram_font, advanced_pixel_lcd_7, advanced_pixel_lcd_7_size);
-// } else {
-//     ESP_LOGE("", "Failed to allocate memory for font");
-// }
-// int count =  0;
-// for (int i = 0; i < advanced_pixel_lcd_7_size; i++)
-// {
-//     if (advanced_pixel_lcd_7[i] == ram_font[i])
-//     {
-//         count++;
-//     }
-// }
-// ESP_LOGI("", "%d members matched out of %d, meaning %d errors", count, advanced_pixel_lcd_7_size, advanced_pixel_lcd_7_size-count);
-
 }

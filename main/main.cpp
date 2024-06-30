@@ -23,7 +23,10 @@ extern "C" void app_main(void)
 
     // RTC setup
     ds3231_dev_handle = ds3231_init(&i2c_master_handle);
-    ESP_ERROR_CHECK(ds3231_set_datetime_at_compile(&ds3231_dev_handle, &i2c_master_handle, false));
+    if (ds3231_validate_time(&ds3231_dev_handle) != ESP_OK)
+    {
+        ds3231_set_datetime_at_compile(&ds3231_dev_handle, true);
+    }
 
     setup_gpio(); // Set up the gpio pins for inputs
     static gptimer_handle_t button_timer = setup_gptimer(&input_event_queue); // Create timer for software debounce

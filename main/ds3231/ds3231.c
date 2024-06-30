@@ -36,20 +36,18 @@ FINAL STRETCH:
     Add proper doxygen documentation  - DONE
     Create an esp-idf component for the rtc
 
-NOTE:   The acceptable time values of the rtc and the tm struct are slightly different. This library assumes the ranges of the tm struct
-        and adjusts the values as needed.
-        Specifically, the tm_mon and tm_wday are both smaller by 1 than what the ds3231 expects!
-
     ESP_LOGI("", "%i %i %i %i %i %i %i", time_struct.tm_sec, time_struct.tm_min,
     time_struct.tm_hour, time_struct.tm_wday, time_struct.tm_mday, time_struct.tm_mon, time_struct.tm_year);
 */
 
-uint8_t inline bcd_to_decimal(uint8_t bcd_num)
+const char TAG[] = "ds3231";
+ 
+static uint8_t inline bcd_to_decimal(uint8_t bcd_num)
 {
     return bcd_num - 6 * (bcd_num >> 4); // Convert an int in bcd format to decimal
 }
 
-uint8_t inline decimal_to_bcd(uint8_t decimal_num)
+static uint8_t inline decimal_to_bcd(uint8_t decimal_num)
 {
     return (decimal_num%10)+((decimal_num/10)<<4); // Convert an int in decimal format to bcd
 }
@@ -71,16 +69,14 @@ ds3231_handle_t ds3231_init(i2c_master_bus_handle_t *bus_handle)
     // Assign relevant information to ds3231 handle
     ds3231_handle_t ds3231_handle;
     ds3231_handle.dev_handle = dev_handle;
-    char* TAG = "ds3231";
     ESP_LOGI(TAG, "ds3231 initialized");
 
     return ds3231_handle;
 }
 
-int validate_time(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
+static esp_err_t validate_time(struct tm *time_struct)
 {
     /*Function to check that all the time values are within the expected range*/
-    char TAG[] = "ds3231";
     
     if (time_struct->tm_sec > 59 || time_struct->tm_sec < 0)
     {
@@ -124,7 +120,7 @@ int validate_time(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
     }
 }
 
-int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
+esp_err_t ds3231_get_datetime(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
 {
     /*Get the date and time information from the ds3231*/
 
@@ -146,7 +142,6 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
     uint8_t register_address; // Data buffer to be sent (contains the register address to be read from)
 
     int time_addresses_len = sizeof(time_addresses)/sizeof(time_addresses[0]); // Calculate the size of the array
-    const char TAG[] = "ds3231";
 
     for (uint8_t i = 0; i < time_addresses_len; i++)
     {
@@ -172,7 +167,7 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
     reference_time.tm_wday -= 1;
     reference_time.tm_mon -= 1;
 
-    if (validate_time(ds3231_handle, &reference_time) != ESP_OK)
+    if (validate_time(&reference_time) != ESP_OK)
     {
         ESP_LOGE(TAG, "Recieved invalid time from module! (Possible corruption?)");
         return ESP_ERR_INVALID_RESPONSE;
@@ -187,22 +182,19 @@ int ds3231_get_datetime(ds3231_handle_t *ds3231_handle, struct tm *time_struct)
     return ESP_OK;
 }
 
-int calculate_day_of_week(int year, int month, int day_of_month)
+esp_err_t ds3231_validate_time(ds3231_handle_t *ds3231_handle)
 {
-    /*A cool little function I found online to calculate the day of the week!
-    NOTE: The weekday range is 1-7*/
-    
-    year -= month < 3;
-    return((year+year/4-year/100+year/400+"-bed=pen+mad."[month]+day_of_month)%7)+1;
+    struct tm received_time;
+    ds3231_get_datetime(ds3231_handle, &received_time); // Get time
+    return validate_time(&received_time); // Return error/success code
 }
 
-int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, struct tm time_struct)
+esp_err_t ds3231_set_datetime(ds3231_handle_t *ds3231_handle, struct tm time_struct)
 {
     /*Set the date and time of the rtc module*/
     bool century_overflow = false; // Flag to determin if the year is in the range of 2000-2099 or 2100-2199
-    char TAG[] = "ds3231";
 
-    if (validate_time(ds3231_handle, &time_struct) == ESP_OK)
+    if (validate_time(&time_struct) == ESP_OK)
     {
         mktime(&time_struct); // Calculate day of week
         i2c_master_dev_handle_t dev_handle = ds3231_handle->dev_handle;
@@ -246,7 +238,7 @@ int ds3231_set_datetime(ds3231_handle_t *ds3231_handle, struct tm time_struct)
     }
 }
 
-int str_to_month(const char* month)
+static int str_to_month(const char* month)
 {
     /*Convert a month string into a corresponding number*/
     const char* months_of_year[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -263,11 +255,10 @@ int str_to_month(const char* month)
 
 
 
-int ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, i2c_master_bus_handle_t *i2c_bus_handle, bool force_setting)
-{
+void ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, bool force_setting)
+{    
     /*Set the time during the compilation 
     (Useful for testing or setting the initial time for the module)*/
-    char TAG[] = "ds3231";
 
     struct tm compile_time={.tm_wday=0};
     
@@ -288,42 +279,26 @@ int ds3231_set_datetime_at_compile(ds3231_handle_t *ds3231_handle, i2c_master_bu
 
     mktime(&compile_time); // Calculate day of week
 
-    if (validate_time(ds3231_handle, &compile_time) == ESP_OK && i2c_master_probe(*i2c_bus_handle, DS3231_I2C_ADDRESS,50) == ESP_OK)
+    if (force_setting)
     {
-
-        if (force_setting)
+        ds3231_set_datetime(ds3231_handle, compile_time); // Set time on rtc if the time is valid
+        ESP_LOGI(TAG, "Successfully set time at compilation!");
+    }
+    else
+    {
+        struct tm time_from_rtc;
+        ds3231_get_datetime(ds3231_handle, &time_from_rtc);
+        
+        if(difftime(mktime(&compile_time), mktime(&time_from_rtc)) > 0)
         {
             ds3231_set_datetime(ds3231_handle, compile_time); // Set time on rtc if the time is valid
             ESP_LOGI(TAG, "Successfully set time at compilation!");
-        }
+        } // If compilation time is newere than rtc time, set time at compilation
+        
         else
         {
-            struct tm time_from_rtc;
-            ds3231_get_datetime(ds3231_handle, &time_from_rtc);
-
-            // mktime assumes tm_year is years since 1900.
-            // It will also automatically calculate the weekday and override the original value.
-            // Therefore tm needs to be modified before passing it
-            
-            if(difftime(mktime(&compile_time), mktime(&time_from_rtc)) > 0)
-            {
-                ds3231_set_datetime(ds3231_handle, compile_time); // Set time on rtc if the time is valid
-                ESP_LOGI(TAG, "Successfully set time at compilation!");
-            } // If compilation time is newere than rtc time, set time at compilation
-            
-            else
-            {
-                ESP_LOGI(TAG, "The time on the rtc is newer that the time at compilation. Time was not set");
-            }
-
+            ESP_LOGI(TAG, "The time on the rtc is newer that the time at compilation. Time was not set");
         }
-        return ESP_OK;
-    }
 
-    else
-    {
-        ESP_LOGE(TAG, "Couldn't set the time!"); // Error if something went terribly wrong
-        return ESP_ERR_INVALID_STATE;
-    }
-    
+    }    
 }

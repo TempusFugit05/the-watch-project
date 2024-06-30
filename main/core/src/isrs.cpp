@@ -10,9 +10,17 @@
 
 void IRAM_ATTR gpio_button_isr_handler(void* timer)
 {
+    static bool first_run = true;
     gptimer_handle_t gptimer = *static_cast<gptimer_handle_t*>(timer);
 
-    gptimer_stop(gptimer); // Stop timer before setting counting start
+    if (first_run)
+    {
+        first_run = false;
+    }
+    else
+    {
+        gptimer_stop(gptimer); // Stop timer before setting counting start
+    } // Check if isr is running for the first time (Not necessary but prevents "timer is not running" error)
 
     if (gpio_get_level(GPIO_BUTTON_PIN))
     {
