@@ -1,9 +1,11 @@
 #include "widget_manager.h"
-#include "lvgl.h"
 #include "input_event_types.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "lvgl.h"
+#include "esp_lvgl_port.h"
 
 // #define CHECK_TASK_SIZES
 

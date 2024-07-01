@@ -10,14 +10,15 @@
 #include "isrs.h"
 #include "config.h"
 #include "setup.h"
+#include "widget_manager.h"
 
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
+
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
-#include "widget_manager.h"
 
 #define TAG "Setup"
 
@@ -34,8 +35,8 @@ gptimer_handle_t setup_gptimer(QueueHandle_t* queue_ptr)
         .direction = GPTIMER_COUNT_DOWN,
         .resolution_hz = 1000000,
         .intr_priority = 0,
-        .flags{.intr_shared=false}
     };
+    button_timer_conf.flags.intr_shared = false;
 
     ESP_ERROR_CHECK(gptimer_new_timer(&button_timer_conf, &gptimer)); // Create timer object
 
@@ -43,8 +44,8 @@ gptimer_handle_t setup_gptimer(QueueHandle_t* queue_ptr)
     {
         .alarm_count = 0,
         .reload_count = 0,
-        .flags{.auto_reload_on_alarm = false}
     };
+    button_timer_alarm_conf.flags.auto_reload_on_alarm = false;
 
     ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &button_timer_alarm_conf));
     gptimer_event_callbacks_t cbs =
@@ -123,8 +124,9 @@ void setup_i2c_master(i2c_master_bus_handle_t* bus_handle)
         .glitch_ignore_cnt = 7,
         .intr_priority = 0,
         .trans_queue_depth = 0,
-        .flags{.enable_internal_pullup = true}
     };
+    i2c_master_conf.flags.enable_internal_pullup = true;
+    
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_master_conf, bus_handle));
 }
 
@@ -238,6 +240,7 @@ void setup_display()
     encoder_driver.type = LV_INDEV_TYPE_ENCODER;
     encoder_driver.read_cb = encoder_event_callback;
     lv_indev_drv_register(&encoder_driver);
+    
 
     setup_lcd_ledc(); // Setup for the lcd led
 }

@@ -1,7 +1,7 @@
 #ifndef INPUT_EVENT_TYPES_H
 #define INPUT_EVENT_TYPES_H
 
-typedef enum : uint8_t{
+typedef enum{
     INIT_EVENT,
     IDLE_EVENT,
     SHORT_PRESS_EVENT,
