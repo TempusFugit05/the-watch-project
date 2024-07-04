@@ -41,5 +41,16 @@ void app_main(void)
     TaskHandle_t task;
     xTaskCreate(run_clock_widget, "clock", 4096, &ds3231_dev_handle, 3, &task);
 
-    init_max30102(&i2c_master_handle);
+    max30102_cfg_t sensor_config =
+    {
+        .enable_reset = true,
+        .fifo_fill_num_intr = 0,
+        .fifo_rollover = true,
+        .led_mode = LED_MULTI_LED_MODE,
+        .sample_average = FIFO_AVG_SAMPLE_16
+    };
+
+    max30102_handle_t max30102_handle;
+    max30102_init(&i2c_master_handle, &max30102_handle);
+    max30102_config(&max30102_handle, &sensor_config);
 }

@@ -8,23 +8,9 @@
 #include "esp_log.h"
 #include "driver/i2c_master.h"
 
-#define MAX30102_I2C_ADDR   0x57
-#define MAX30102_INTR_PIN   GPIO_NUM_4 // Interrupt to signify fifo buffer almost full (active-low)
-
-#define FIFO_DATA_REG       0x7
-#define READ_PTR_REG        0x6
-#define WRITE_PTR_REG       0x4
-
-typedef struct
-{
-    SemaphoreHandle_t fifo_semaphore;
-    i2c_master_dev_handle_t sensor_dev_handle;
-} max30102_handle_t;
-
-
 static void max30102_buff_service_task(void* max30102_dev_handle)
 {
-    max30102_handle_t* max30102_handle = (max30102_handle_t*)max30102_dev_handle;
+    max30102_handle_internal_t* max30102_handle = (max30102_handle_internal_t*)max30102_dev_handle;
 
     i2c_master_dev_handle_t dev_handle = max30102_handle->sensor_dev_handle;
     SemaphoreHandle_t fifo_semaphore = max30102_handle->fifo_semaphore;
@@ -82,7 +68,7 @@ static void max30102_buff_service_task(void* max30102_dev_handle)
 
 IRAM_ATTR void max30102_isr_handler(void* max30102_dev_handle)
 {
-    max30102_handle_t* dev_handle = (max30102_handle_t*)max30102_dev_handle;
+    max30102_handle_internal_t* dev_handle = (max30102_handle_internal_t*)max30102_dev_handle;
 
     SemaphoreHandle_t fifo_semaphore = dev_handle->fifo_semaphore;
 
@@ -96,10 +82,73 @@ IRAM_ATTR void max30102_isr_handler(void* max30102_dev_handle)
     }
 }
 
-void init_max30102(i2c_master_bus_handle_t* i2c_bus_handle)
+uint8_t get_interrupt_mask_1(intr_enable_t* interrupts)
+{
+    uint8_t almost_full_intr = 0;
+    uint8_t ppg_ready_intr = 0;
+    uint8_t alc_overflow_intr = 0;
+    uint8_t power_ready_intr = 0;
+
+    if (interrupts->almost_full_intr)
+    {
+        almost_full_intr = ALMOST_FULL_INTR_MASK;
+    }
+    
+    if (interrupts->ppg_ready_intr)
+    {
+        ppg_ready_intr = PPG_READY_INTR_MASK;
+    }
+    
+    if (interrupts->alc_overflow_intr)
+    {
+        alc_overflow_intr = ALC_OVERFLOW_INTR_MASK;
+    }
+    
+    if (interrupts->power_ready_intr)
+    {
+        power_ready_intr = POWER_READY_INTR_MASK;
+    }
+    
+    return (almost_full_intr | ppg_ready_intr | alc_overflow_intr | power_ready_intr);
+}
+
+uint8_t get_interrupt_mask_2(intr_enable_t* interrupts)
+{
+    uint8_t die_temp_ready_intr = 0;
+    if (interrupts->die_temp_ready_intr)
+    {
+        return DIE_TEMP_READY_MASK;
+    }
+    return die_temp_ready_intr;
+}
+
+void config_isr(max30102_handle_t* sensor_handle)
+{
+    /*ISR setup*/
+    gpio_config_t intr_gpio_cfg = 
+    {
+        .pin_bit_mask = 1ULL << GPIO_NUM_4,
+        .mode = GPIO_MODE_INPUT,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&intr_gpio_cfg);
+    ESP_ERROR_CHECK(gpio_set_intr_type(GPIO_NUM_4, GPIO_INTR_ANYEDGE));
+
+    esp_err_t isr_service_err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+    
+    /*Check gpio_install_isr_service error code.
+    ESP_ERR_INVALID_STATE is acceptable since it signifies that the user already installed an isr before this call.*/
+    if(isr_service_err != ESP_ERR_INVALID_STATE && isr_service_err != ESP_OK)
+    {
+        ESP_ERROR_CHECK(isr_service_err);
+    }
+    ESP_ERROR_CHECK(gpio_isr_handler_add(GPIO_NUM_4, max30102_isr_handler, sensor_handle));
+}
+
+void max30102_init(i2c_master_bus_handle_t* i2c_bus_handle, max30102_handle_t* return_handle)
 {
     /*Struct to hold data needed for sensor communication*/
-    static max30102_handle_t max30102_handle;
+    static max30102_handle_internal_t max30102_handle;
     max30102_handle.fifo_semaphore = xSemaphoreCreateBinary();
 
     i2c_device_config_t dev_cfg =
@@ -108,85 +157,30 @@ void init_max30102(i2c_master_bus_handle_t* i2c_bus_handle)
         .device_address = MAX30102_I2C_ADDR,
         .scl_speed_hz = 400000
     };
-    i2c_master_bus_add_device(*i2c_bus_handle, &dev_cfg, &max30102_handle.sensor_dev_handle);
-    
-    /*ISR setup*/
-    gpio_config_t intr_gpio_cfg = 
-    {
-        .pin_bit_mask = 1ULL << MAX30102_INTR_PIN,
-        .mode = GPIO_MODE_INPUT,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&intr_gpio_cfg);
-    ESP_ERROR_CHECK(gpio_set_intr_type(MAX30102_INTR_PIN, GPIO_INTR_ANYEDGE));
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(*i2c_bus_handle, &dev_cfg, &max30102_handle.sensor_dev_handle));
 
-    // gpio_isr_register();
-    esp_err_t isr_service_err = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
-    /*Check gpio_install_isr_service error code.
-    ESP_ERR_INVALID_STATE is acceptable since it signifies that the user already installed an isr before this call.*/
-    if(isr_service_err != ESP_ERR_INVALID_STATE && isr_service_err != ESP_OK)
-    {
-        ESP_ERROR_CHECK(isr_service_err);
-    }
-    ESP_ERROR_CHECK(gpio_isr_handler_add(MAX30102_INTR_PIN, max30102_isr_handler, &max30102_handle));
-    
-    if (i2c_master_probe(*i2c_bus_handle, MAX30102_I2C_ADDR, 1000) != ESP_OK)
-    {
-        ESP_LOGE("", "Sensor not connected...");
-    }
-
-    uint8_t config_buff[2];
-
-    /*Interrupt enable*/
-    config_buff[0] = 0x02;
-    config_buff[1] = 0b10100001; // Enable almost full, ambient light and power ready interrupts
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    /*Led config*/
-    config_buff[0] = 0x09;
-    config_buff[1] = 0b01000111; // Disable shut-down, reset power mode, set to red+ir led mode
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    /*Fifo config*/
-    config_buff[0] = 0x08;
-    config_buff[1] = 0b10010000; // 16 sample average, rollover enabled, generate interrupt on 0 read samples
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    /*Clear fifo pointers and overflow*/
-    config_buff[0] = 0x4;
-    config_buff[1] = 0;
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    config_buff[0] = 0x05;
-    config_buff[1] = 0;
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    config_buff[0] = 0x7;
-    config_buff[1] = 0;
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    /*Led amplitude config*/
-    config_buff[0] = 0x0C;
-    config_buff[1] = 0xFF; // Around 50 ma
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    config_buff[0] = 0x0D;
-    config_buff[1] = 0xFF; // Around 50 ma
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    /*slots config*/
-    config_buff[0] = 0x11;
-    config_buff[1] = 0b00100010; // Enable red and ir
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    config_buff[0] = 0x12;
-    config_buff[1] = 0; // Disable other slots
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
-
-    /*SPO2 config*/
-    config_buff[0] = 0x0A;
-    config_buff[1] = 0b01100111; // Set range to 16384, 100 samples/s, 18 bit resolution
-    i2c_master_transmit(max30102_handle.sensor_dev_handle, config_buff, 2, -1);
+    *return_handle = (max30102_handle_t)(&max30102_handle);
 
     xTaskCreatePinnedToCore(max30102_buff_service_task, "max30102_buff_service", 4196, &max30102_handle, 4, NULL, 1); // Task to read sensor buffer
+}
+
+void static inline config_register(uint8_t* buff, uint8_t reg_addr, uint8_t data, max30102_handle_t* handle)
+{
+    buff[0] = reg_addr;
+    buff[1] = data;
+    i2c_master_transmit((*(max30102_handle_internal_t**)handle)->sensor_dev_handle, buff, 2, -1);
+}
+
+esp_err_t max30102_config(max30102_handle_t* sensor_handle, max30102_cfg_t* sensor_config)
+{
+    uint8_t buff_to_send[2];
+    config_internal_t config;
+    config.intr_mask_1 = get_interrupt_mask_1(&sensor_config->intr_enable_flags);
+    config.intr_mask_2 = get_interrupt_mask_2(&sensor_config->intr_enable_flags);
+    config.user_config = sensor_config;
+
+    config_register(buff_to_send, INTERRUPT_ENABLE_REG_1, config.intr_mask_1, sensor_handle);
+    config_register(buff_to_send, INTERRUPT_ENABLE_REG_2, config.intr_mask_2, sensor_handle);
+
+    return ESP_OK;
 }
