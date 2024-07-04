@@ -43,11 +43,20 @@ void app_main(void)
 
     max30102_cfg_t sensor_config =
     {
-        .enable_reset = true,
-        .fifo_fill_num_intr = 0,
-        .fifo_rollover = true,
+        .enable_reset = RESET_ENABLE,
+
+        .intr_enable_flags={.alc_overflow_intr = true, .almost_full_intr = true, .ppg_ready_intr = true, .die_temp_ready_intr = true},
+        .fifo_unread_samples_intr = 15,
+        .fifo_rollover = FIFO_ROLLOVER_ENABLE,
+        .sample_average = FIFO_AVG_SAMPLE_16,
+
+        .spo2_range = SPO2_RANGE_4096,
+        .spo2_sample_rate = SPO2_SAMPLE_RATE_100_HZ,
+        .adc_resolution = LED_ADC_RESOLUTION_18_BIT,
+
         .led_mode = LED_MULTI_LED_MODE,
-        .sample_average = FIFO_AVG_SAMPLE_16
+        .ir_led_amplitude = 128,
+        .red_led_amplitude = 128,
     };
 
     max30102_handle_t max30102_handle;

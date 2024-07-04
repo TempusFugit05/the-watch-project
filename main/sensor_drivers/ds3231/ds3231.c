@@ -14,6 +14,7 @@
 #define MONTH_REGISTER_ADDRESS      0x05
 #define YEAR_REGISTER_ADDRESS       0x06
 
+static const char* TAG = "ds3231";
 
 /*TODO:
 1.  ADD ERROR HANDLING FOR INVALID TIME INPUT/OUTPUT
@@ -40,8 +41,6 @@ FINAL STRETCH:
     time_struct.tm_hour, time_struct.tm_wday, time_struct.tm_mday, time_struct.tm_mon, time_struct.tm_year);
 */
 
-const char TAG[] = "ds3231";
- 
 static uint8_t inline bcd_to_decimal(uint8_t bcd_num)
 {
     return bcd_num - 6 * (bcd_num >> 4); // Convert an int in bcd format to decimal

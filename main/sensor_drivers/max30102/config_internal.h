@@ -1,5 +1,5 @@
-#ifndef MAX30102_CONFIGS_H
-#define MAX30102_CONFIGS_H
+#ifndef CONFIG_INTERNAL_H
+#define CONFIG_INTERNAL_H
 
 #define MAX30102_I2C_ADDR   0x57
 
@@ -26,33 +26,19 @@
 #define FIFO_DATA_REG       0x07 // Actual sample data is stored here (FIFO buffer register)
 /*--------------------------------------------------------------------------------*/
 
-/*Config registers*/
+
+/*FIFO config*/
+#define FIFO_AVG_SAMPLE_MASK(sample_size)   (sample_size << 5)
+
 #define FIFO_CFG_REG            0x08 // Configs sample averaging, FIFO rollover mode and number of samples written for almost-full interrupt to trigger
 
-/*Number of empty data slots in FIFO when interrupt is activated*/
+#define FIFO_ROLLOVER_ENABLE_MASK   (1 << 4)
+#define FIFO_ROLLOVER_DISABLE_MASK  (0 << 4)
+
 #define ALMOST_FULL_CFG_MIN     0
 #define ALMOST_FULL_CFG_MAX     15
-
-/*Enable/disable FIFO writing over older data when buffer is full*/
-typedef enum
-{
-    FIFO_ROLLOVER_ENABLE = (1 << 4),
-    FIFO_ROLLOVER_DISABLE = (0 << 4)
-} fifo_rollover_t;
-
-/*Number of samples to average*/
-typedef enum
-{
-    FIFO_AVG_SAMPLE_1  = (0 << 5),
-    FIFO_AVG_SAMPLE_2  = (1 << 5),
-    FIFO_AVG_SAMPLE_4  = (2 << 5),
-    FIFO_AVG_SAMPLE_8  = (3 << 5),
-    FIFO_AVG_SAMPLE_16 = (4 << 5),
-    FIFO_AVG_SAMPLE_32 = (5 << 5),
-    
-} sample_average_t;
-
 /*--------------------------------------------------------------------------------*/
+
 
 /*Mode config*/
 #define MODE_CFG_REG            0x09 // Configs power off mode, power reset and led mode (dual/single led)
@@ -60,31 +46,34 @@ typedef enum
 #define SHUTDOWN_ENABLE_MASK    (1 << 7)
 #define SHUTDOWN_DISABLE_MASK   (0 << 7)
 
-#define RESET_MASK              (1 << 6) // (Auto resets to 0 after reset)
+#define RESET_MASK          (1 << 6) // (Auto resets to 0 after reset)
 
-typedef enum
-{
-    RESET_ENABLE  = (1 << 6),
-    RESET_DISABLE = (0 << 6),
-} reset_enable_t;
+#define RESET_DISABLE_MASK  (0 << 6)
+#define RESET_ENABLE_MASK   (1 << 6)
 
-typedef enum
-{
-    LED_HR_ONLY_MODE   = (0b010 << 2),
-    LED_SPO2_ONLY_MODE = (0b011 << 2),
-    LED_MULTI_LED_MODE = (0b111 << 2),
-} led_mode_t;
+#define LED_HR_ONLY_MODE_MASK   0b010
+#define LED_SPO2_ONLY_MODE_MASK 0b011
+#define LED_MULTI_LED_MODE_MASK 0b111
 /*--------------------------------------------------------------------------------*/
 
-/*LED power mode*/
 
+/*SpO2 config*/
+#define SPO2_CFG_REG    0x0A
+
+#define LED_ADC_RESOLUTION_MASK(resolution) (resolution)
+#define SPO2_SAMPLE_RATE_MASK(frequency)    (frequency << 3)
+#define SPO2_RANGE_MASK(range)              (range << 6)
+/*--------------------------------------------------------------------------------*/
+
+
+/*LED config*/
 #define LED_1_AMPLITUDE_CFG_REG 0x0C // Configs led1 power level
 #define LED_2_AMPLITUDE_CFG_REG 0x0D // Configs led2 power level
 
-#define AMPLITUDE_MIN           0
-#define AMPLITUDE_MAX           0xFF
-
 #define LED_CONTROL_REG_1       0x11 // Enables led slots 1 and 2 
 #define LED_CONTROL_REG_2       0x12 // Enables led slots 3 and 4
-/*--------------------------------------------------------------------------------*/
-#endif // MAX30102_CONFIGS_H
+
+#define RED_LED_SLOT_MASK   (0b001)
+#define IR_LED_SLOT_MASK    (0b010)
+
+#endif // CONFIG_INTERNAL_H
