@@ -22,10 +22,8 @@ void app_main(void)
     // RTC setup
     static ds3231_handle_t ds3231_dev_handle;
     ds3231_dev_handle = ds3231_init(&i2c_master_handle);
-    if (ds3231_validate_time(&ds3231_dev_handle) != ESP_OK)
-    {
-        ds3231_set_datetime_at_compile(&ds3231_dev_handle, true);
-    }
+
+    ds3231_set_datetime_at_compile(&ds3231_dev_handle, true);
 
     setup_gpio(); // Set up the gpio pins for inputs
     static gptimer_handle_t button_timer;
@@ -45,13 +43,13 @@ void app_main(void)
     {
         .enable_reset = RESET_ENABLE,
 
-        .intr_enable_flags={.alc_overflow_intr = true, .almost_full_intr = true, .ppg_ready_intr = true, .die_temp_ready_intr = true},
-        .fifo_unread_samples_intr = 15,
-        .fifo_rollover = FIFO_ROLLOVER_ENABLE,
-        .sample_average = FIFO_AVG_SAMPLE_16,
+        .intr_enable_flags={.alc_overflow_intr = true, .almost_full_intr = true, .ppg_ready_intr = true, .die_temp_ready_intr = false},
+        .fifo_unread_samples_intr = 12,
+        .fifo_rollover = FIFO_ROLLOVER_DISABLE,
+        .sample_average = FIFO_AVG_SAMPLE_8,
 
-        .spo2_range = SPO2_RANGE_4096,
-        .spo2_sample_rate = SPO2_SAMPLE_RATE_100_HZ,
+        .spo2_range = SPO2_RANGE_16384,
+        .spo2_sample_rate = SPO2_SAMPLE_RATE_1000_HZ,
         .adc_resolution = LED_ADC_RESOLUTION_18_BIT,
 
         .led_mode = LED_MULTI_LED_MODE,

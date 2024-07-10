@@ -62,7 +62,7 @@
 
 #define LED_ADC_RESOLUTION_MASK(resolution) (resolution)
 #define SPO2_SAMPLE_RATE_MASK(frequency)    (frequency << 3)
-#define SPO2_RANGE_MASK(range)              (range << 6)
+#define SPO2_RANGE_MASK(range)              (range << 5)
 /*--------------------------------------------------------------------------------*/
 
 

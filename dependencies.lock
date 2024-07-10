@@ -1,0 +1,21 @@
+dependencies:
+  espressif__esp_lvgl_port:
+    component_hash: null
+    source:
+      path: /home/tempus/Documents/idf_projects/the_watch_project/components/espressif__esp_lvgl_port
+      type: local
+    version: 2.2.2
+  idf:
+    component_hash: null
+    source:
+      type: idf
+    version: 5.2.1
+  lvgl/lvgl:
+    component_hash: d7c1ac037ae6e85d94897f807d6e7ba0946a83e720074fc95a4f6241da9f9f53
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 8.4.0
+manifest_hash: cb4f63d62e95ed8970e7f22ece2a6698ba831e9fd08f4ec7287b07e593289883
+target: esp32s3
+version: 1.0.0
